@@ -67,6 +67,8 @@ STATIC_LIBS :=
 LIBS := -lssl
 OBJECTS := $(SRC_DIR)/db_ext.c $(SRC_DIR)/db_schema.c
 
+STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
+
 ifeq ($(DB),rocksdb)
   CFLAGS += -DUSE_ROCKSDB
   SHARED_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.so
