@@ -94,7 +94,7 @@ else
 endif
 
 .PHONY: all
-all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(INCLUDE_DIR)/libkvstore/db_base.h $(INCLUDE_DIR)/libkvstore/db_ext.h $(INCLUDE_DIR)/libkvstore/db_schema.h
+all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_ext.h $(INCLUDE_DIR)/kvstore/db_schema.h
 
 $(BUILD_DIR)/libkvstore.so: $(OBJECTS) $(SHARED_LIBS)
 	@- mkdir -p $(dir $@)
@@ -112,7 +112,7 @@ $(BUILD_DIR)/src/%.o: $(SRC_DIR)/%.c
 # TODO: Find files in subdirectories without using shell?
 -include $(shell find $(BUILD_DIR)/h -name "*.d")
 
-$(INCLUDE_DIR)/libkvstore/%.h: $(SRC_DIR)/%.h
+$(INCLUDE_DIR)/kvstore/%.h: $(SRC_DIR)/%.h
 	@- mkdir -p $(dir $@)
 	cp $^ $@
 
