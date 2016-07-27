@@ -123,8 +123,9 @@ clean:
 
 .PHONY: distclean
 distclean: clean
-	- $(MAKE) distclean -C $(DEPS_DIR)/libressl-portable
-	- $(MAKE) distclean -C $(DEPS_DIR)/uv
+	- $(MAKE) clean -C $(DEPS_DIR)/leveldb
+	- $(MAKE) clean -C $(DEPS_DIR)/liblmdb
+	- $(MAKE) distclean -C $(DEPS_DIR)/snappy
 
 
 $(DEPS_DIR)/liblmdb/liblmdb.a: | mdb
