@@ -65,7 +65,7 @@ WARNINGS += -Wformat=2
 SHARED_LIBS :=
 STATIC_LIBS :=
 LIBS := -lssl
-OBJECTS := $(SRC_DIR)/db_ext.c $(SRC_DIR)/db_schema.c
+OBJECTS := $(BUILD_DIR)/src/db_ext.o $(BUILD_DIR)/src/db_schema.o
 
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
 
