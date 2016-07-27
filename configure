@@ -1,5 +1,15 @@
 #!/bin/sh
 set -e
 
+snappy_autogen () { (
+	# libtoolize is known as glibtoolize on OS X.
+	# See https://github.com/google/snappy/pull/4
+	# And https://github.com/btrask/stronglink/issues/101
+	if glibtoolize --version >/dev/null; then
+	        alias libtoolize=glibtoolize
+	fi
+	. ./autogen.sh
+); }
+
 (cd ./deps/snappy && snappy_autogen && ./configure)
 
