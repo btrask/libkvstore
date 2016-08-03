@@ -291,6 +291,9 @@ void db_range_genmax(DB_range *const range) {
 			out[i] = 0;
 		}
 	}
-	assert(0);
+	db_assert(!"range overflow");
+	// TODO: It would be nice to represent an unbounded range maximum
+	// by {0, NULL}, but our range code would probably need a lot of
+	// special cases to handle it.
 }
 
