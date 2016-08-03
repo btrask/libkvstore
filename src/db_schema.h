@@ -65,6 +65,10 @@ char const *db_read_string(DB_val *const val, DB_txn *const txn);
 void db_bind_string(DB_val *const val, char const *const str, DB_txn *const txn);
 void db_bind_string_len(DB_val *const val, char const *const str, size_t const len, int const nulterm, DB_txn *const txn);
 
+// Blobs are always stored inline. The worst-case encoded length is len*2+2.
+size_t db_read_blob(DB_val *const val, unsigned char *const out, size_t const max);
+void db_bind_blob(DB_val *const val, unsigned char const *const buf, size_t const len);
+
 // Increments range->min to fill in range->max.
 // Assumes lexicographic ordering. Don't use it if you changed cmp functions.
 void db_range_genmax(DB_range *const range);
