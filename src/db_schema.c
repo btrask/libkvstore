@@ -242,14 +242,16 @@ size_t db_read_blob(DB_val *const val, unsigned char *const out, size_t const ma
 				val->size -= 2;
 				return i;
 			} else if(0x01 == x[1]) {
-				out[i++] = x[0]; x += 2;
+				if(i < max) out[i++] = x[0];
+				x += 2;
 				val->data += 2;
 				val->size -= 2;
 			} else {
 				db_assert(!"blob terminator");
 			}
 		} else {
-			out[i++] = x[0]; x++;
+			if(i < max) out[i++] = x[0];
+			x++;
 			val->data++;
 			val->size--;
 		}
