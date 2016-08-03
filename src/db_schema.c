@@ -11,18 +11,21 @@
 #include "common.h"
 
 static size_t varint_size(uint8_t const *const data) {
+	assert(data);
 	return (data[0] >> 4) + 1;
 }
 static uint64_t varint_decode(uint8_t const *const data, size_t const size) {
+	assert(data);
 	assert(size >= 1);
 	size_t const len = varint_size(data);
-	assert(len);
-	assert(size >= len);
+	db_assert(len);
+	db_assert(size >= len);
 	uint64_t x = data[0] & 0x0f;
 	for(size_t i = 1; i < len; ++i) x = x << 8 | data[i];
 	return x;
 }
 static size_t varint_encode(uint8_t *const data, size_t const size, uint64_t const x) {
+	assert(data);
 	assert(size >= DB_VARINT_MAX);
 	size_t rem = 8;
 	size_t out = 0;
@@ -44,10 +47,10 @@ static size_t varint_encode(uint8_t *const data, size_t const size, uint64_t con
 static size_t varint_seek(uint8_t const *const data, size_t const size, unsigned const col) {
 	size_t pos = 0;
 	for(unsigned i = 0; i < col; ++i) {
-		assert(pos+1 <= size);
+		db_assert(pos+1 <= size);
 		pos += varint_size(data+pos);
 	}
-	assert(pos+1 <= size);
+	db_assert(pos+1 <= size);
 	return pos;
 }
 
@@ -115,7 +118,7 @@ uint64_t db_next_id(dbid_t const table, DB_txn *const txn) {
 	if(DB_NOTFOUND == rc) return 1;
 	if(rc < 0) return 0;
 	uint64_t const t = db_read_uint64(prev);
-	assert(table == t);
+	db_assert(table == t);
 	return db_read_uint64(prev)+1;
 }
 
@@ -174,7 +177,7 @@ void db_bind_string_len(DB_val *const val, char const *const str, size_t const l
 	// Be careful to avoid insidious undefined behavior here.
 	// strnlen() is undefined if str is null, which GCC was using
 	// to skip the NULL check, causing us to store "" instead.
-	assert((!str || len == strnlen(str, len)) && "Embedded nuls");
+	assert(!str || len == strnlen(str, len));
 
 	unsigned char *const out = val->data;
 	if(0 == len) {
