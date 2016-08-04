@@ -85,8 +85,8 @@ else ifeq ($(DB),hyper)
   OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
 else ifeq ($(DB),leveldb)
   CFLAGS += -I$(DEPS_DIR)/leveldb/include -I$(DEPS_DIR)/snappy/include
-  SHARED_LIBS += $(DEPS_DIR)/leveldb/libleveldb.so $(DEPS_DIR)/snappy/.libs/libsnappy.so
-  STATIC_LIBS += $(DEPS_DIR)/leveldb/libleveldb.a $(DEPS_DIR)/snappy/.libs/libsnappy.a
+  SHARED_LIBS += $(DEPS_DIR)/leveldb/out-shared/libleveldb.so $(DEPS_DIR)/snappy/.libs/libsnappy.so
+  STATIC_LIBS += $(DEPS_DIR)/leveldb/out-static/libleveldb.a $(DEPS_DIR)/snappy/.libs/libsnappy.a
   LIBS += -lstdc++
   OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
 else
@@ -133,11 +133,13 @@ $(DEPS_DIR)/liblmdb/liblmdb.a: | mdb
 mdb:
 	$(MAKE) -C $(DEPS_DIR)/liblmdb --no-print-directory
 
-$(DEPS_DIR)/leveldb/libleveldb.a: | leveldb
+$(DEPS_DIR)/leveldb/out-shared/libleveldb.so: | leveldb
+$(DEPS_DIR)/leveldb/out-static/libleveldb.a: | leveldb
 .PHONY: leveldb
 leveldb:
 	$(MAKE) -C $(DEPS_DIR)/leveldb --no-print-directory
 
+$(DEPS_DIR)/snappy/.libs/libsnappy.so: | snappy
 $(DEPS_DIR)/snappy/.libs/libsnappy.a: | snappy
 .PHONY: snappy
 snappy:
