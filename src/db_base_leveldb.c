@@ -99,14 +99,14 @@ static int mdberr(int const rc) {
 }
 static int mdb_cursor_seek(MDB_cursor *const cursor, MDB_val *const key, MDB_val *const data, int const dir) {
 	if(!key) return EINVAL;
-	MDB_val const orig = *key;
+	MDB_val const orig[1] = { *key };
 	MDB_cursor_op const op = 0 == dir ? MDB_SET : MDB_SET_RANGE;
 	int rc = mdberr(mdb_cursor_get(cursor, key, data, op));
 	if(dir >= 0) return rc;
 	if(rc >= 0) {
 		MDB_txn *const txn = mdb_cursor_txn(cursor);
 		MDB_dbi const dbi = mdb_cursor_dbi(cursor);
-		if(0 == mdb_cmp(txn, dbi, &orig, key)) return rc;
+		if(0 == mdb_cmp(txn, dbi, orig, key)) return rc;
 		return mdberr(mdb_cursor_get(cursor, key, data, MDB_PREV));
 	} else if(DB_NOTFOUND == rc) {
 		return mdberr(mdb_cursor_get(cursor, key, data, MDB_LAST));
@@ -205,7 +205,7 @@ static int ldb_cursor_current(LDB_cursor *const cursor, MDB_val *const key, MDB_
 static int ldb_cursor_seek(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(!key) return DB_EINVAL;
-	MDB_val const orig = *key;
+	MDB_val const orig[1] = { *key };
 	leveldb_iter_seek(cursor->iter, key->mv_data, key->mv_size);
 	cursor->valid = !!leveldb_iter_valid(cursor->iter);
 	int rc = ldb_cursor_current(cursor, key, val);
@@ -213,14 +213,14 @@ static int ldb_cursor_seek(LDB_cursor *const cursor, MDB_val *const key, MDB_val
 	if(dir < 0) {
 		if(rc < 0) {
 			leveldb_iter_seek_to_last(cursor->iter);
-		} else if(0 != cursor->cmp(key, &orig)) {
+		} else if(0 != cursor->cmp(key, orig)) {
 			leveldb_iter_prev(cursor->iter);
 		} else return rc;
 		cursor->valid = !!leveldb_iter_valid(cursor->iter);
 		return ldb_cursor_current(cursor, key, val);
 	}
 	if(rc < 0) return rc;
-	if(0 == cursor->cmp(key, &orig)) return rc;
+	if(0 == cursor->cmp(key, orig)) return rc;
 	cursor->valid = 0;
 	return DB_NOTFOUND;
 }
@@ -258,9 +258,9 @@ int db_env_create(DB_env **const out) {
 
 	int maxfiles = 100; // Safe default
 //#ifdef __POSIX__
-	struct rlimit lim;
-	getrlimit(RLIMIT_NOFILE, &lim);
-	maxfiles = lim.rlim_cur / 3;
+	struct rlimit lim[1];
+	getrlimit(RLIMIT_NOFILE, lim);
+	maxfiles = lim->rlim_cur / 3;
 //#endif
 	leveldb_options_set_max_open_files(env->opts, maxfiles);
 
@@ -575,50 +575,50 @@ int db_cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const 
 }
 int db_cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	MDB_val k1 = *(MDB_val *)key, d1;
-	MDB_val k2 = *(MDB_val *)key, d2;
-	int rc1 = mdberr(mdb_cursor_seek(cursor->pending, &k1, &d1, dir));
-	int rc2 =        ldb_cursor_seek(cursor->persist, &k2, &d2, dir);
-	return db_cursor_update(cursor, rc1, &k1, &d1, rc2, &k2, &d2, dir, key, data);
+	MDB_val k1[1] = { *(MDB_val *)key }, d1[1];
+	MDB_val k2[1] = { *(MDB_val *)key }, d2[1];
+	int rc1 = mdberr(mdb_cursor_seek(cursor->pending, k1, d1, dir));
+	int rc2 =        ldb_cursor_seek(cursor->persist, k2, d2, dir);
+	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, key, data);
 }
 int db_cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(0 == dir) return DB_EINVAL;
-	MDB_val k1, d1, k2, d2;
+	MDB_val k1[1], d1[1], k2[1], d2[1];
 	MDB_cursor_op const op = dir < 0 ? MDB_LAST : MDB_FIRST;
-	int rc1 = mdberr(mdb_cursor_get(cursor->pending, &k1, &d1, op));
-	int rc2 =        ldb_cursor_first(cursor->persist, &k2, &d2, dir);
-	return db_cursor_update(cursor, rc1, &k1, &d1, rc2, &k2, &d2, dir, key, data);
+	int rc1 = mdberr(mdb_cursor_get(cursor->pending, k1, d1, op));
+	int rc2 =        ldb_cursor_first(cursor->persist, k2, d2, dir);
+	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, key, data);
 }
 int db_cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(0 == dir) return DB_EINVAL;
 	int rc1, rc2;
-	MDB_val k1, d1, k2, d2;
+	MDB_val k1[1], d1[1], k2[1], d2[1];
 	if(S_PERSIST != cursor->state) {
 		MDB_cursor_op const op = dir < 0 ? MDB_PREV : MDB_NEXT;
-		rc1 = mdberr(mdb_cursor_get(cursor->pending, &k1, &d1, op));
+		rc1 = mdberr(mdb_cursor_get(cursor->pending, k1, d1, op));
 	} else {
-		rc1 = mdberr(mdb_cursor_get(cursor->pending, &k1, &d1, MDB_GET_CURRENT));
+		rc1 = mdberr(mdb_cursor_get(cursor->pending, k1, d1, MDB_GET_CURRENT));
 		if(DB_EINVAL == rc1) rc1 = DB_NOTFOUND;
 	}
 	if(S_PENDING != cursor->state) {
-		rc2 = ldb_cursor_next(cursor->persist, &k2, &d2, dir);
+		rc2 = ldb_cursor_next(cursor->persist, k2, d2, dir);
 	} else {
-		rc2 = ldb_cursor_current(cursor->persist, &k2, &d2);
+		rc2 = ldb_cursor_current(cursor->persist, k2, d2);
 	}
-	return db_cursor_update(cursor, rc1, &k1, &d1, rc2, &k2, &d2, dir, key, data);
+	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, key, data);
 }
 
 int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
 	if(DB_RDONLY & cursor->txn->flags) return DB_EACCES;
 	if(DB_NOOVERWRITE & flags) {
-		DB_val k = *key, d;
-		int rc = db_cursor_seek(cursor, &k, &d, 0);
+		DB_val k[1] = { *key }, d[1];
+		int rc = db_cursor_seek(cursor, k, d, 0);
 		if(rc >= 0) {
-			*key = k;
-			*data = d;
+			*key = *k;
+			*data = *d;
 			return DB_KEYEXIST;
 		}
 		if(DB_NOTFOUND != rc) return rc;
