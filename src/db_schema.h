@@ -1,6 +1,9 @@
 // Copyright 2014-2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
+#ifndef KVSTORE_DB_SCHEMA_H
+#define KVSTORE_DB_SCHEMA_H
+
 #include <stdint.h>
 #include <kvstore/db_range.h>
 
@@ -78,4 +81,6 @@ static void db_nullval(DB_val *const val) {
 	val->size = 0;
 	val->data = NULL;
 }
+
+#endif
 
