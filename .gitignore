@@ -5,6 +5,9 @@ perf.data.old
 deps/uv/uv.xcodeproj
 *~
 .DS_Store
+testdb
+testdb-lock
+testdb/
 
 
 /deps/snappy/*.[oa]

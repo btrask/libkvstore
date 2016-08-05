@@ -127,6 +127,14 @@ distclean: clean
 	- $(MAKE) clean -C $(DEPS_DIR)/liblmdb
 	- $(MAKE) distclean -C $(DEPS_DIR)/snappy
 
+.PHONY: test
+test: $(BUILD_DIR)/mtest
+	$(BUILD_DIR)/mtest
+
+$(BUILD_DIR)/mtest: $(BUILD_DIR)/src/mtest.o $(BUILD_DIR)/libkvstore.a $(DEPS_DIR)/liblmdb/liblmdb.a
+	@- mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $^ -lpthread -o $@
+
 
 $(DEPS_DIR)/liblmdb/liblmdb.a: | mdb
 .PHONY: mdb
