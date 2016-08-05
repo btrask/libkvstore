@@ -43,6 +43,7 @@ Notable differences from LMDB's API:
 - `DB_NOOVERWRITE` is a large performance hit for write-optimized backends, so try to avoid it.
 - Transactions have a shared cursor which can be used to avoid frequently creating and destroying cursors. Note that "shared" means "not re-entrant."
 - A low level schema layer is included. It's optional and subject to change.
+- Concurrent access between several processes is supported by some backends (LMDB) and not others (LevelDB).
 
 Known Issues
 ------------
