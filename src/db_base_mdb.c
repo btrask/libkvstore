@@ -174,7 +174,7 @@ int db_cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const dat
 }
 int db_cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(0 == dir) return DB_EINVAL;
-	MDB_cursor_op const op = dir < 0 ? MDB_FIRST : MDB_LAST;
+	MDB_cursor_op const op = dir < 0 ? MDB_LAST : MDB_FIRST;
 	MDB_val _k[1], _d[1];
 	MDB_val *const k = key ? (MDB_val *)key : _k;
 	MDB_val *const d = data ? (MDB_val *)data : _d;
