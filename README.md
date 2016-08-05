@@ -24,6 +24,8 @@ Possible future backends:
 - CockroachDB?
 - SQLite?
 
+To build with a given backend, use e.g. `DB=leveldb make`. You may need to `make clean` when switching. Use `make test` to test.
+
 API
 ---
 
