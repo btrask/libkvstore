@@ -712,6 +712,7 @@ int db_cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const dat
 
 int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
+	if(!key) return DB_EINVAL;
 	if(DB_RDONLY & cursor->txn->flags) return DB_EACCES;
 	ldb_cursor_storage_invalidate(cursor->persist);
 	DB_val k[1], d[1];
@@ -721,20 +722,20 @@ int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data
 		rc = db_cursor_seek(cursor, k, d, 0);
 		if(rc >= 0) {
 			*key = *k;
-			*data = *d;
+			if(data) *data = *d;
 			return DB_KEYEXIST;
 		}
 		if(DB_NOTFOUND != rc) return rc;
 	}
 	cursor->state = S_INVALID;
 	*k = *key;
-	*d = (DB_val){ data->size+1, NULL }; // Prefix with deletion flag.
+	*d = (DB_val){ 1+(data ? data->size : 0), NULL }; // Prefix with deletion flag.
 	assert(cursor->pending);
 	rc = mdberr(mdb_cursor_put(cursor->pending, (MDB_val *)k, (MDB_val *)d, MDB_RESERVE));
 	if(rc < 0) return rc;
 	assert(d->data);
 	memset(d->data+0, KEY_PRESENT, 1);
-	memcpy(d->data+1, data->data, data->size); // TODO: Safe if src==null and size==0?
+	if(data) memcpy(d->data+1, data->data, data->size); // TODO: Safe if src==null and size==0?
 	return 0;
 }
 int db_cursor_del(DB_cursor *const cursor, unsigned const flags) {

@@ -44,6 +44,7 @@ Notable differences from LMDB's API:
 - Transactions have a shared cursor which can be used to avoid frequently creating and destroying cursors. Note that "shared" means "not re-entrant."
 - A low level schema layer is included. It's optional and subject to change.
 - Concurrent access between several processes is supported by some backends (LMDB) and not others (LevelDB).
+- Puts with `NULL` data (rather than just empty data) are explicitly allowed.
 
 Known Issues
 ------------
