@@ -42,5 +42,12 @@ Notable differences from LMDB's API:
 - Many of the more specialized options are unsupported.
 - `DB_NOOVERWRITE` is a large performance hit for write-optimized backends, so try to avoid it.
 
+Known Issues
+------------
+
+- The RocksDB backend doesn't do very smart configuration (doesn't even enable bloom filters).
+- The LevelDB-based backends don't support nested transactions.
+- The lsmdb backend is more or less unsupported.
+
 License: MIT
 
