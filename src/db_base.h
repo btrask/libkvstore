@@ -64,7 +64,7 @@ int db_txn_cursor(DB_txn *const txn, DB_cursor **const out);
 
 int db_get(DB_txn *const txn, DB_val *const key, DB_val *const data);
 int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags);
-int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags); // Doesn't necessarily return DB_NOTFOUND if key doesn't exist.
+int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags); // Doesn't return DB_NOTFOUND if key doesn't exist (a flag may be added in the future).
 
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out);
 void db_cursor_close(DB_cursor *const cursor);
@@ -80,6 +80,34 @@ int db_cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const dat
 
 int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags);
 int db_cursor_del(DB_cursor *const cursor, unsigned const flags);
+
+typedef enum DB_cursor_op {
+	DB_GET_CURRENT,
+	DB_FIRST,
+	DB_LAST,
+	DB_NEXT,
+	DB_PREV,
+	DB_SET, // Seeks preserving input key.
+	DB_SET_KEY, // Seeks overwriting input key with DB copy.
+	DB_SET_RANGE,
+} DB_cursor_op;
+static int db_cursor_get(DB_cursor *const cursor, DB_val *const key, DB_val *const data, DB_cursor_op const op) {
+	int rc;
+	switch(op) {
+	case DB_GET_CURRENT: return db_cursor_current(cursor, key, data);
+	case DB_FIRST: return db_cursor_first(cursor, key, data, +1);
+	case DB_LAST: return db_cursor_first(cursor, key, data, -1);
+	case DB_NEXT: return db_cursor_next(cursor, key, data, +1);
+	case DB_PREV: return db_cursor_next(cursor, key, data, -1);
+	case DB_SET: return db_cursor_seek(cursor, key, data, 0);
+	case DB_SET_KEY:
+		rc = db_cursor_seek(cursor, key, data, 0);
+		if(rc < 0) return rc;
+		return db_cursor_current(cursor, key, data);
+	case DB_SET_RANGE: return db_cursor_seek(cursor, key, data, +1);
+	default: return DB_EINVAL;
+	}
+}
 
 static char const *db_strerror(int const rc) {
 	switch(rc) {

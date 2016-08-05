@@ -33,9 +33,12 @@ Please refer to the LMDB documentation for basic information.
 
 Notable differences from LMDB's API:
 
-- `mdb_cursor_get` is replaced with `db_cursor_current`, `db_cursor_seek`, `db_cursor_first`, and `db_cursor_next`. First and next take directions that can be positive (forward) or negative (backward). Seek takes a direction that can be positive (`>=`), negative (`<=`), or 0 (`==`).
+- `db_cursor_current`: returns key and value at the cursor's current location.
+- `db_cursor_seek`: seeks to key. Direction can be positive (`>=`), negative (`<=`), or 0 (`==`).
+- `db_cursor_next`: steps forward (dir is positive) or backward (dir is negative).
+- `db_cursor_first`: seeks to first (dir is positive) or last (dir is negative) element.
 - DBIs are not supported, There is only a single keyspace. (Use ranges for partitioning.)
-- `DUPSORT` mode is not supported. Each key can only have one value. (Use longer, distinct keys and ranges.)
+- `DUPSORT` mode is not supported. Each key can only have one value. (Suffix your keys and use ranges.)
 - Many of the more specialized options are unsupported.
 - `DB_NOOVERWRITE` is a large performance hit for write-optimized backends, so try to avoid it.
 

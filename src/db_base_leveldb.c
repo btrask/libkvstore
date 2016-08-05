@@ -675,7 +675,11 @@ int db_cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const dat
 	MDB_val k2[1] = { *(MDB_val *)key }, d2[1];
 	int rc1 = mdberr(mdb_cursor_seek(cursor->pending, k1, d1, dir));
 	int rc2 =        ldb_cursor_seek(cursor->persist, k2, d2, dir);
-	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, key, data);
+	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, NULL, data);
+	// Note: We pass NULL for the output key to emulate MDB_SET semantics,
+	// which doesn't touch the key at all and leaves it pointing to the
+	// user's copy. For MDB_SET_KEY behavior, you must make an extra call
+	// to db_cursor_current.
 }
 int db_cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
