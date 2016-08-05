@@ -1,7 +1,7 @@
 // Copyright 2014-2015 Ben Trask
 // MIT licensed (see LICENSE for details)
 
-#include "db_base.h"
+#include <kvstore/db_base.h>
 
 typedef struct {
 	DB_val min[1];

@@ -7,7 +7,7 @@
 #include <openssl/sha.h>
 #include <stdlib.h>
 #include <string.h>
-#include "db_schema.h"
+#include <kvstore/db_schema.h>
 #include "common.h"
 
 static size_t varint_size(uint8_t const *const data) {

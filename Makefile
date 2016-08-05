@@ -13,6 +13,7 @@ CFLAGS += -g -fno-omit-frame-pointer
 CFLAGS += -fstack-protector
 CFLAGS += -fPIC
 CFLAGS += -I$(DEPS_DIR)
+CFLAGS += -I$(INCLUDE_DIR)
 
 WARNINGS := -Werror -Wall -Wextra -Wunused -Wuninitialized -Wvla
 
@@ -93,8 +94,10 @@ else
   OBJECTS += $(BUILD_DIR)/src/db_base_mdb.o
 endif
 
+HEADERS := $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_range.h $(INCLUDE_DIR)/kvstore/db_schema.h
+
 .PHONY: all
-all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_range.h $(INCLUDE_DIR)/kvstore/db_schema.h
+all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(HEADERS)
 
 $(BUILD_DIR)/libkvstore.so: $(OBJECTS) $(SHARED_LIBS)
 	@- mkdir -p $(dir $@)
@@ -104,7 +107,7 @@ $(BUILD_DIR)/libkvstore.a: $(OBJECTS) $(STATIC_LIBS)
 	@- mkdir -p $(dir $@)
 	$(AR) rs $@ $^
 
-$(BUILD_DIR)/src/%.o: $(SRC_DIR)/%.c
+$(BUILD_DIR)/src/%.o: $(SRC_DIR)/%.c | $(HEADERS)
 	@- mkdir -p $(dir $@)
 	@- mkdir -p $(dir $(BUILD_DIR)/h/src/$*.d)
 	$(CC) -c $(CFLAGS) $(WARNINGS) -MMD -MP -MF $(BUILD_DIR)/h/src/$*.d -o $@ $<

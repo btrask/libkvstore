@@ -3,7 +3,7 @@
 
 #include <assert.h>
 #include <stdio.h>
-#include "db_range.h"
+#include <kvstore/db_range.h>
 
 int db_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
 	assert(db_cursor_cmp(cursor, range->min, range->max) < 0);
