@@ -1,5 +1,5 @@
 build/
-include/
+/include/
 perf.data
 perf.data.old
 deps/uv/uv.xcodeproj
