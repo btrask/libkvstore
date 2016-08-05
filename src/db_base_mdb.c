@@ -105,6 +105,28 @@ int db_txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	return 0;
 }
 
+// Use our own cursor for these rather than mdb_get/put
+// because otherwise MDB has to construct its own temporary cursor
+// on the stack, which is just wasteful if we might need it again.
+int db_get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
+	DB_cursor *cursor;
+	int rc = db_txn_cursor(txn, &cursor);
+	if(rc < 0) return rc;
+	return db_cursor_seek(cursor, key, data, 0);
+}
+int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
+	DB_cursor *cursor;
+	int rc = db_txn_cursor(txn, &cursor);
+	if(rc < 0) return rc;
+	return db_cursor_put(cursor, key, data, flags);
+}
+int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
+	if(flags) return DB_EINVAL;
+	int rc = mdberr(mdb_del(txn->txn, MDB_MAIN_DBI, (MDB_val *)key, NULL, 0));
+	if(DB_NOTFOUND == rc) return 0; // TODO: Add a flag to expose this.
+	return rc;
+}
+
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	return mdberr(mdb_cursor_open(txn->txn, MDB_MAIN_DBI, (MDB_cursor **)out));
 }
@@ -170,7 +192,8 @@ int db_cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const dat
 int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	return mdberr(mdb_cursor_put((MDB_cursor *)cursor, (MDB_val *)key, (MDB_val *)data, flags));
 }
-int db_cursor_del(DB_cursor *const cursor) {
+int db_cursor_del(DB_cursor *const cursor, unsigned const flags) {
+	if(flags) return DB_EINVAL;
 	return mdberr(mdb_cursor_del((MDB_cursor *)cursor, 0));
 }
 

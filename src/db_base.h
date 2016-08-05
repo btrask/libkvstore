@@ -62,6 +62,10 @@ int db_txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *const b);
 // you're done.
 int db_txn_cursor(DB_txn *const txn, DB_cursor **const out);
 
+int db_get(DB_txn *const txn, DB_val *const key, DB_val *const data);
+int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags);
+int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags); // Doesn't necessarily return DB_NOTFOUND if key doesn't exist.
+
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out);
 void db_cursor_close(DB_cursor *const cursor);
 void db_cursor_reset(DB_cursor *const cursor);
@@ -75,7 +79,7 @@ int db_cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const da
 int db_cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir);
 
 int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags);
-int db_cursor_del(DB_cursor *const cursor);
+int db_cursor_del(DB_cursor *const cursor, unsigned const flags);
 
 static char const *db_strerror(int const rc) {
 	switch(rc) {

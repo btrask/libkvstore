@@ -5,19 +5,6 @@
 #include <stdio.h>
 #include "db_ext.h"
 
-int db_get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
-	DB_cursor *cursor;
-	int rc = db_txn_cursor(txn, &cursor);
-	if(rc < 0) return rc;
-	return db_cursor_seek(cursor, key, data, 0);
-}
-int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
-	DB_cursor *cursor;
-	int rc = db_txn_cursor(txn, &cursor);
-	if(rc < 0) return rc;
-	return db_cursor_put(cursor, key, data, flags);
-}
-
 int db_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
 	assert(db_cursor_cmp(cursor, range->min, range->max) < 0);
 	int rc = db_cursor_seek(cursor, key, data, dir);
