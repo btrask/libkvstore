@@ -64,7 +64,7 @@ WARNINGS += -Wformat=2
 
 SHARED_LIBS :=
 STATIC_LIBS :=
-LIBS := -lssl
+LIBS := -lpthread
 OBJECTS := $(BUILD_DIR)/src/db_range.o $(BUILD_DIR)/src/db_schema.o
 
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
@@ -131,9 +131,10 @@ distclean: clean
 test: $(BUILD_DIR)/mtest
 	$(BUILD_DIR)/mtest
 
-$(BUILD_DIR)/mtest: $(BUILD_DIR)/src/mtest.o $(BUILD_DIR)/libkvstore.a $(DEPS_DIR)/liblmdb/liblmdb.a
+$(BUILD_DIR)/mtest: $(BUILD_DIR)/src/mtest.o $(BUILD_DIR)/libkvstore.a $(STATIC_LIBS)
 	@- mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $^ -lpthread -o $@
+	rm -rf ./testdb ./testdb-lock
+	$(CC) $(CFLAGS) $^ $(LIBS) -o $@
 
 
 $(DEPS_DIR)/liblmdb/liblmdb.a: | mdb
