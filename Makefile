@@ -65,7 +65,7 @@ WARNINGS += -Wformat=2
 SHARED_LIBS :=
 STATIC_LIBS :=
 LIBS := -lssl
-OBJECTS := $(BUILD_DIR)/src/db_ext.o $(BUILD_DIR)/src/db_schema.o
+OBJECTS := $(BUILD_DIR)/src/db_range.o $(BUILD_DIR)/src/db_schema.o
 
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
 
@@ -94,7 +94,7 @@ else
 endif
 
 .PHONY: all
-all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_ext.h $(INCLUDE_DIR)/kvstore/db_schema.h
+all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_range.h $(INCLUDE_DIR)/kvstore/db_schema.h
 
 $(BUILD_DIR)/libkvstore.so: $(OBJECTS) $(SHARED_LIBS)
 	@- mkdir -p $(dir $@)

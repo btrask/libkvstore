@@ -122,7 +122,7 @@ int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned co
 }
 int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	if(flags) return DB_EINVAL;
-	int rc = mdberr(mdb_del(txn->txn, MDB_MAIN_DBI, (MDB_val *)key, NULL, 0));
+	int rc = mdberr(mdb_del(txn->txn, MDB_MAIN_DBI, (MDB_val *)key, NULL));
 	if(DB_NOTFOUND == rc) return 0; // TODO: Add a flag to expose this.
 	return rc;
 }

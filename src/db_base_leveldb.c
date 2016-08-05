@@ -16,16 +16,7 @@
 
 #include "liblmdb/lmdb.h"
 #include "db_base.h"
-
-// TODO
-#define assert_zeroed(buf, count) do { \
-	for(size_t i = 0; i < sizeof(*(buf)) * (count); ++i) { \
-		if(0 == ((char const *)(buf))[i]) continue; \
-		fprintf(stderr, "%s:%d Buffer at %p not zeroed (%ld)\n", \
-			__FILE__, __LINE__, (buf), i); \
-		abort(); \
-	} \
-} while(0)
+#include "common.h"
 
 #define MDB_RDWR 0
 
@@ -90,8 +81,7 @@ static char *tohex(MDB_val const *const x) {
 
 
 static int compare_default(MDB_val const *const a, MDB_val const *const b) {
-	size_t const min = a->mv_size < b->mv_size ? a->mv_size : b->mv_size;
-	int x = memcmp(a->mv_data, b->mv_data, min);
+	int x = memcmp(a->mv_data, b->mv_data, MIN(a->mv_size, b->mv_size));
 	if(0 != x) return x;
 	if(a->mv_size < b->mv_size) return -1;
 	if(a->mv_size > b->mv_size) return +1;

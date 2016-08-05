@@ -2,7 +2,7 @@
 // MIT licensed (see LICENSE for details)
 
 #include <stdint.h>
-#include "db_ext.h"
+#include "db_range.h"
 
 #ifndef NDEBUG
 #define db_assert(x) assert(x)
