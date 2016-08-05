@@ -1,4 +1,4 @@
-// Copyright 2014-2015 Ben Trask
+// Copyright 2014-2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
 #include <assert.h>

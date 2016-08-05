@@ -41,6 +41,8 @@ Notable differences from LMDB's API:
 - `DUPSORT` mode is not supported. Each key can only have one value. (Suffix your keys and use ranges.)
 - Many of the more specialized options are unsupported.
 - `DB_NOOVERWRITE` is a large performance hit for write-optimized backends, so try to avoid it.
+- Transactions have a shared cursor which can be used to avoid frequently creating and destroying cursors. Note that "shared" means "not re-entrant."
+- A low level schema layer is included. It's optional and subject to change.
 
 Known Issues
 ------------
