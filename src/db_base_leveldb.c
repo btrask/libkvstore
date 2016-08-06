@@ -660,6 +660,7 @@ int db_cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const 
 	} else if(S_EQUAL == cursor->state || S_PENDING == cursor->state) {
 		int rc = mdberr(mdb_cursor_get(cursor->pending, (MDB_val *)key, (MDB_val *)data, MDB_GET_CURRENT));
 		if(DB_EINVAL == rc) return DB_NOTFOUND;
+		assert(KEY_TOMBSTONE != tombstone_get((MDB_val *)data));
 		tombstone_trim((MDB_val *)data);
 		return rc;
 	} else if(S_INVALID == cursor->state) {
