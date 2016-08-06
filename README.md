@@ -9,20 +9,28 @@ A general-purpose wrapper around key-value stores.
 - Written in C
 - No frills
 
+If you're unsure of when to use something like libkvstore:
+
+- When you're currently using flat files but you want something simpler, faster and more reliable
+- When you're currently using SQL but feel like you're fighting the query planner or dynamically generating queries
+- When you're writing a database and want to support pluggable storage engines
+
+libkvstore is low level enough to give you direct control over precisely how data is indexed and read, but high level enough that you can use it for general application programming without too much pain. If [SQLite is fopen](https://www.sqlite.org/whentouse.html), then libkvstore is `open(2)`.
+
 Supported backends:
 
-- LMDB (built-in)
-- LevelDB (built-in)
-- RocksDB (external)
-- HyperLevelDB (external)
-- lsmdb (external)
+- [LMDB](https://symas.com/products/lightning-memory-mapped-database/) (built-in)
+- [LevelDB](https://github.com/google/leveldb) (built-in)
+- [RocksDB](http://rocksdb.org/) (external)
+- [HyperLevelDB](https://github.com/rescrv/HyperLevelDB) (external)
+- [lsmdb](https://github.com/btrask/lsmdb) (external)
 
 Possible future backends:
 
-- WiredTiger
-- BerkeleyDB?
-- CockroachDB?
-- SQLite?
+- [WiredTiger](https://docs.mongodb.com/manual/core/wiredtiger/)
+- [BerkeleyDB](http://www.oracle.com/us/products/database/berkeley-db/index.html)
+- [CockroachDB](https://github.com/cockroachdb/cockroach)
+- [SQLite](https://www.sqlite.org/)
 
 To build with a given backend, use e.g. `DB=leveldb make`. You may need to `make clean` when switching. Use `make test` to test.
 
