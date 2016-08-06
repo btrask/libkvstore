@@ -29,7 +29,7 @@ int main(int argc,char * argv[])
 	DB_txn *txn;
 //	DB_stat mst;
 	DB_cursor *cursor, *cur2;
-//	DB_cursor_op op;
+	DB_cursor_op op;
 	int count;
 	int *values;
 	char sval[32] = "";
@@ -145,27 +145,27 @@ int main(int argc,char * argv[])
 			E(db_del(txn, &key, 0));
 		}
 
-/*		printf("Restarting cursor in txn\n");
-		for (op=MDB_FIRST, i=0; i<=32; op=MDB_NEXT, i++) {
-			if (RES(MDB_NOTFOUND, mdb_cursor_get(cur2, &key, &data, op)))
+		printf("Restarting cursor in txn\n");
+		for (op=DB_FIRST, i=0; i<=32; op=DB_NEXT, i++) {
+			if (RES(DB_NOTFOUND, db_cursor_get(cur2, &key, &data, op)))
 				break;
 			printf("key: %p %.*s, data: %p %.*s\n",
 				key.data,  (int) key.size,  (char *) key.data,
 				data.data, (int) data.size, (char *) data.data);
-		}*/
+		}
 		db_cursor_close(cur2);
 		E(db_txn_commit(txn));
 
 		printf("Restarting cursor outside txn\n");
 		E(db_txn_begin(env, NULL, 0, &txn));
 		E(db_cursor_open(txn, &cursor));
-/*		for (op=MDB_FIRST, i=0; i<=32; op=MDB_NEXT, i++) {
-			if (RES(MDB_NOTFOUND, mdb_cursor_get(cursor, &key, &data, op)))
+		for (op=DB_FIRST, i=0; i<=32; op=DB_NEXT, i++) {
+			if (RES(DB_NOTFOUND, db_cursor_get(cursor, &key, &data, op)))
 				break;
 			printf("key: %p %.*s, data: %p %.*s\n",
 				key.data,  (int) key.size,  (char *) key.data,
 				data.data, (int) data.size, (char *) data.data);
-		}*/
+		}
 		db_cursor_close(cursor);
 		db_txn_abort(txn);
 
