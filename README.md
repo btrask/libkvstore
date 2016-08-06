@@ -38,7 +38,7 @@ To build with a given backend, use e.g. `DB=leveldb make`. You may need to `make
 API
 ---
 
-Please refer to the [LMDB documentation](http://lmdb.tech/doc) for general information.
+Please refer to the [LMDB documentation](http://lmdb.tech/doc/group__mdb.html) for general information.
 
 Notable differences from LMDB's API:
 
