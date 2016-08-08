@@ -736,7 +736,7 @@ int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data
 	if(rc < 0) return rc;
 	assert(d->data);
 	memset(d->data+0, KEY_PRESENT, 1);
-	if(data) memcpy(d->data+1, data->data, data->size); // TODO: Safe if src==null and size==0?
+	if(data && data->size > 0) memcpy(d->data+1, data->data, data->size);
 	return 0;
 }
 int db_cursor_del(DB_cursor *const cursor, unsigned const flags) {
