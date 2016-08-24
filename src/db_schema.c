@@ -225,53 +225,21 @@ void db_bind_string_len(DB_val *const val, char const *const str, size_t const l
 	db_assertf(rc >= 0, "Database error %s", db_strerror(rc));
 }
 
-// Blob encoding: No length prefix. Nul bytes are escaped with 0x0001.
-// Termination is indicated with 0x0000. Any other sequence of 0x00nn is
-// invalid.
-size_t db_read_blob(DB_val *const val, unsigned char *const out, size_t const max) {
+void db_read_blob(DB_val *const val, unsigned char *const out, size_t const len) {
 	assert(val);
 	assert(val->data);
 	assert(out);
-	uint8_t const *x = val->data;
-	size_t i = 0;
-	for(;;) {
-		db_assert(val->size >= 2); // Expecting 0x0000 terminator.
-		if(0x00 == x[0]) {
-			if(0x00 == x[1]) {
-				val->data += 2;
-				val->size -= 2;
-				return i;
-			} else if(0x01 == x[1]) {
-				if(i < max) out[i++] = x[0];
-				x += 2;
-				val->data += 2;
-				val->size -= 2;
-			} else {
-				db_assert(!"blob terminator");
-			}
-		} else {
-			if(i < max) out[i++] = x[0];
-			x++;
-			val->data++;
-			val->size--;
-		}
-	}
+	db_assert(len <= val->size);
+	memcpy(out, val->data, len);
+	val->data += len;
+	val->size -= len;
 }
 void db_bind_blob(DB_val *const val, unsigned char const *const buf, size_t const len) {
 	assert(val);
 	assert(val->data);
 	assert(buf || 0 == len);
-	uint8_t *const x = val->data;
-	for(size_t i = 0; i < len; i++) {
-		if(0x00 == buf[i]) {
-			x[val->size++] = 0x00;
-			x[val->size++] = 0x01;
-		} else {
-			x[val->size++] = buf[i];
-		}
-	}
-	x[val->size++] = 0x00;
-	x[val->size++] = 0x00;
+	memcpy(val->data+val->size, buf, len);
+	val->size += len;
 }
 
 
