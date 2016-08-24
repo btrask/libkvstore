@@ -21,6 +21,7 @@
 #define DB_NOTFOUND (-30798)
 #define DB_PANIC (-30795)
 #define DB_VERSION_MISMATCH (-30794)
+#define DB_BAD_VALSIZE (-30781)
 #define DB_BAD_DBI (-30780)
 #define DB_LAST_ERRCODE DB_BAD_DBI
 
@@ -115,6 +116,7 @@ static char const *db_strerror(int const rc) {
 		case DB_NOTFOUND: return "Database item not found";
 		case DB_PANIC: return "Database panic";
 		case DB_VERSION_MISMATCH: return "Database version mismatch";
+		case DB_BAD_VALSIZE: return "Database bad value size";
 		case DB_BAD_DBI: return "Database bad DBI";
 
 		case DB_ENOENT: return "No entity";
