@@ -225,12 +225,12 @@ void db_bind_string_len(DB_val *const val, char const *const str, size_t const l
 	db_assertf(rc >= 0, "Database error %s", db_strerror(rc));
 }
 
-void db_read_blob(DB_val *const val, unsigned char *const out, size_t const len) {
+void db_read_blob(DB_val *const val, unsigned char const **const out, size_t const len) {
 	assert(val);
 	assert(val->data);
 	assert(out);
-	db_assert(len <= val->size);
-	memcpy(out, val->data, len);
+	db_assert(val->size >= len);
+	*out = val->data;
 	val->data += len;
 	val->size -= len;
 }

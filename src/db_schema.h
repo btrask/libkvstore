@@ -70,7 +70,7 @@ void db_bind_string_len(DB_val *const val, char const *const str, size_t const l
 
 // Blobs are fixed length and stored inline.
 #define DB_BLOB_MAX(n) (n)
-void db_read_blob(DB_val *const val, unsigned char *const out, size_t const len);
+void db_read_blob(DB_val *const val, unsigned char const **const out, size_t const len);
 void db_bind_blob(DB_val *const val, unsigned char const *const buf, size_t const len);
 
 // Increments range->min to fill in range->max.
