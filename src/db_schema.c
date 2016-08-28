@@ -165,6 +165,8 @@ char const *db_read_string(DB_val *const val, DB_txn *const txn) {
 	db_assertf(rc >= 0, "Database error %s", db_strerror(rc));
 	char const *const fstr = full->data;
 	db_assert('\0' == fstr[full->size-1]);
+	val->data += DB_INLINE_MAX;
+	val->size -= DB_INLINE_MAX;
 	return fstr;
 }
 void db_bind_string(DB_val *const val, char const *const str, DB_txn *const txn) {
