@@ -248,10 +248,10 @@ static int ldb_cursor_current(LDB_cursor *const cursor, MDB_val *const key, MDB_
 static int ldb_cursor_seek(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(!key) return DB_EINVAL;
-	cursor->storage_current = false;
 	MDB_val const orig[1] = { *key };
 	leveldb_iter_seek(cursor->iter, key->mv_data, key->mv_size);
 	cursor->valid = !!leveldb_iter_valid(cursor->iter);
+	cursor->storage_current = false;
 	int rc = ldb_cursor_current(cursor, key, val);
 	if(dir > 0) return rc;
 	if(dir < 0) {
@@ -261,6 +261,7 @@ static int ldb_cursor_seek(LDB_cursor *const cursor, MDB_val *const key, MDB_val
 			leveldb_iter_prev(cursor->iter);
 		} else return rc;
 		cursor->valid = !!leveldb_iter_valid(cursor->iter);
+		cursor->storage_current = false;
 		return ldb_cursor_current(cursor, key, val);
 	}
 	if(rc < 0) return rc;
@@ -271,20 +272,20 @@ static int ldb_cursor_seek(LDB_cursor *const cursor, MDB_val *const key, MDB_val
 static int ldb_cursor_first(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(0 == dir) return DB_EINVAL;
-	cursor->storage_current = false;
 	if(dir > 0) leveldb_iter_seek_to_first(cursor->iter);
 	if(dir < 0) leveldb_iter_seek_to_last(cursor->iter);
 	cursor->valid = !!leveldb_iter_valid(cursor->iter);
+	cursor->storage_current = false;
 	return ldb_cursor_current(cursor, key, val);
 }
 static int ldb_cursor_next(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(!cursor->valid) return ldb_cursor_first(cursor, key, val, dir);
 	if(0 == dir) return DB_EINVAL;
-	cursor->storage_current = false;
 	if(dir > 0) leveldb_iter_next(cursor->iter);
 	if(dir < 0) leveldb_iter_prev(cursor->iter);
 	cursor->valid = !!leveldb_iter_valid(cursor->iter);
+	cursor->storage_current = false;
 	return ldb_cursor_current(cursor, key, val);
 }
 
