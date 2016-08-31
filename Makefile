@@ -149,7 +149,7 @@ $(DEPS_DIR)/leveldb/out-shared/libleveldb.so: | leveldb
 $(DEPS_DIR)/leveldb/out-static/libleveldb.a: | leveldb
 .PHONY: leveldb
 leveldb:
-	$(MAKE) -C $(DEPS_DIR)/leveldb --no-print-directory
+	CFLAGS="-DSNAPPY -I../snappy/" CXXFLAGS="-DSNAPPY -I../snappy/" LIBS="-L../snappy/.libs/ -lsnappy" $(MAKE) -C $(DEPS_DIR)/leveldb --no-print-directory
 
 $(DEPS_DIR)/snappy/.libs/libsnappy.so: | snappy
 $(DEPS_DIR)/snappy/.libs/libsnappy.a: | snappy

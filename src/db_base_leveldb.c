@@ -303,6 +303,12 @@ int db_env_create(DB_env **const out) {
 	leveldb_options_set_create_if_missing(env->opts, 1);
 	leveldb_options_set_compression(env->opts, leveldb_snappy_compression);
 
+	// TODO: Make this configurable?
+	// We should probably have a single general config function
+	// rather than a function per option, so that adding new options
+	// doesn't require changes to existing back-ends.
+	leveldb_options_set_block_size(env->opts, 1024*16);
+
 	int maxfiles = 100; // Safe default
 //#ifdef __POSIX__
 	struct rlimit lim[1];
