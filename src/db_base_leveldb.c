@@ -615,6 +615,7 @@ int db_cursor_clear(DB_cursor *const cursor) {
 	}
 }
 int db_cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
+	assert(cursor); // We can't report an error from this function.
 	return db_txn_cmp(cursor->txn, a, b);
 }
 
