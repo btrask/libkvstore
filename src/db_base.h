@@ -116,22 +116,22 @@ static int db_cursor_get(DB_cursor *const cursor, DB_val *const key, DB_val *con
 
 static char const *db_strerror(int const rc) {
 	switch(rc) {
-		case DB_KEYEXIST: return "Database item already exists";
-		case DB_NOTFOUND: return "Database item not found";
-		case DB_PANIC: return "Database panic";
-		case DB_VERSION_MISMATCH: return "Database version mismatch";
-		case DB_BAD_VALSIZE: return "Database bad value size";
-		case DB_BAD_DBI: return "Database bad DBI";
+	case DB_KEYEXIST: return "Database item already exists";
+	case DB_NOTFOUND: return "Database item not found";
+	case DB_PANIC: return "Database panic";
+	case DB_VERSION_MISMATCH: return "Database version mismatch";
+	case DB_BAD_VALSIZE: return "Database bad value size";
+	case DB_BAD_DBI: return "Database bad DBI";
 
-		case DB_ENOENT: return "No entity";
-		case DB_EIO: return "IO";
-		case DB_ENOMEM: return "No memory";
-		case DB_EACCES: return "Access";
-		case DB_EBUSY: return "Busy";
-		case DB_EINVAL: return "Invalid";
-		case DB_ENOSPC: return "No space";
+	case DB_ENOENT: return "No entity";
+	case DB_EIO: return "IO";
+	case DB_ENOMEM: return "No memory";
+	case DB_EACCES: return "Access";
+	case DB_EBUSY: return "Busy";
+	case DB_EINVAL: return "Invalid";
+	case DB_ENOSPC: return "No space";
 
-		default: return NULL;
+	default: return NULL;
 	}
 }
 
