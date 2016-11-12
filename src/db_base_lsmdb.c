@@ -87,6 +87,7 @@ DB_FN int db__txn_commit(DB_txn *const txn) {
 		db_txn_abort(txn);
 		return rc;
 	}
+	db_cursor_close(txn->cursor);
 	rc = mdberr(lsmdb_txn_commit(txn->txn));
 	txn->isa = NULL;
 	txn->env = NULL;
@@ -96,6 +97,7 @@ DB_FN int db__txn_commit(DB_txn *const txn) {
 }
 DB_FN void db__txn_abort(DB_txn *const txn) {
 	if(!txn) return;
+	db_cursor_close(txn->cursor);
 	lsmdb_txn_abort(txn->txn);
 	txn->isa = NULL;
 	txn->env = NULL;
