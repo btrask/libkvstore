@@ -64,7 +64,6 @@ Known Issues
 - The RocksDB backend doesn't do very smart configuration (doesn't even enable bloom filters).
 - The LevelDB-based backends don't support nested transactions yet.
 - The lsmdb backend is more or less unsupported.
-- The back-end is chosen at compile-time.
 - Disk formats are not explicitly detected. If your application supports multiple back-ends, you may need to track which one is used manually.
 
 License: MIT

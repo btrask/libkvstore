@@ -14,6 +14,7 @@ CFLAGS += -fstack-protector
 CFLAGS += -fPIC
 CFLAGS += -I$(DEPS_DIR)
 CFLAGS += -I$(INCLUDE_DIR)
+CFLAGS += -DDB_DYNAMIC
 
 WARNINGS := -Werror -Wall -Wextra -Wunused -Wuninitialized -Wvla
 
@@ -66,7 +67,7 @@ WARNINGS += -Wformat=2
 SHARED_LIBS :=
 STATIC_LIBS :=
 LIBS := -lpthread
-OBJECTS := $(BUILD_DIR)/src/db_range.o $(BUILD_DIR)/src/db_schema.o
+OBJECTS := $(BUILD_DIR)/src/db_base_dynamic.o $(BUILD_DIR)/src/db_range.o $(BUILD_DIR)/src/db_schema.o
 
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
 
@@ -85,13 +86,21 @@ else ifeq ($(DB),hyper)
   LIBS += -lstdc++
   OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
 else ifeq ($(DB),leveldb)
-  CFLAGS += -I$(DEPS_DIR)/leveldb/include -I$(DEPS_DIR)/snappy/include
-  SHARED_LIBS += $(DEPS_DIR)/leveldb/out-shared/libleveldb.so $(DEPS_DIR)/snappy/.libs/libsnappy.so
-  STATIC_LIBS += $(DEPS_DIR)/leveldb/out-static/libleveldb.a $(DEPS_DIR)/snappy/.libs/libsnappy.a
-  LIBS += -lstdc++
-  OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+  CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
 else
-  OBJECTS += $(BUILD_DIR)/src/db_base_mdb.o
+  CFLAGS += -DDB_BASE_DEFAULT=db_base_mdb
+endif
+
+ifndef $(NO_LEVELDB)
+CFLAGS += -I$(DEPS_DIR)/leveldb/include -I$(DEPS_DIR)/snappy/include
+SHARED_LIBS += $(DEPS_DIR)/leveldb/out-shared/libleveldb.so $(DEPS_DIR)/snappy/.libs/libsnappy.so
+STATIC_LIBS += $(DEPS_DIR)/leveldb/out-static/libleveldb.a $(DEPS_DIR)/snappy/.libs/libsnappy.a
+LIBS += -lstdc++
+OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+endif
+
+ifndef $(NO_MDB)
+OBJECTS += $(BUILD_DIR)/src/db_base_mdb.o
 endif
 
 HEADERS := $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_range.h $(INCLUDE_DIR)/kvstore/db_schema.h

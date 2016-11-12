@@ -3,34 +3,56 @@
 
 #include <assert.h>
 #include <stdlib.h>
-#include "db_base.h"
+#include "db_base_internal.h"
 #include "liblmdb/lmdb.h"
 
 // MDB private definition but seems unlikely to change.
 // We double check it at run time and return an error if it's different.
 #define MDB_MAIN_DBI 1
 
+struct DB_env {
+	DB_base const *isa;
+	MDB_env *env;
+};
 struct DB_txn {
+	DB_base const *isa;
 	MDB_txn *txn;
 	unsigned flags;
 	DB_cursor *cursor;
+};
+struct DB_cursor {
+	DB_base const *isa;
+	MDB_cursor *cursor;
 };
 
 static int mdberr(int const rc) {
 	return rc <= 0 ? rc : -rc;
 }
 
-int db_env_create(DB_env **const out) {
-	return mdberr(mdb_env_create((MDB_env **)out));
+DB_FN int db__env_create(DB_env **const out) {
+	MDB_env *e = NULL;
+	int rc = mdberr(mdb_env_create(&e));
+	if(rc < 0) return rc;
+	DB_env *env = calloc(1, sizeof(DB_env));
+	if(!env) {
+		mdb_env_close(e);
+		return DB_ENOMEM;
+	}
+	env->isa = db_base_mdb;
+	env->env = e;
+	*out = env;
+	return 0;
 }
-int db_env_set_mapsize(DB_env *const env, size_t const size) {
-	return mdberr(mdb_env_set_mapsize((MDB_env *)env, size));
+DB_FN int db__env_set_mapsize(DB_env *const env, size_t const size) {
+	if(!env) return DB_EINVAL;
+	return mdberr(mdb_env_set_mapsize(env->env, size));
 }
-int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
-	int rc = mdberr(mdb_env_open((MDB_env *)env, name, flags | MDB_NOSUBDIR, mode));
+DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
+	if(!env) return DB_EINVAL;
+	int rc = mdberr(mdb_env_open(env->env, name, flags | MDB_NOSUBDIR, mode));
 	if(rc < 0) return rc;
 	MDB_txn *txn;
-	rc = mdberr(mdb_txn_begin((MDB_env *)env, NULL, 0, &txn));
+	rc = mdberr(mdb_txn_begin(env->env, NULL, 0, &txn));
 	if(rc < 0) return rc;
 	MDB_dbi dbi;
 	rc = mdberr(mdb_dbi_open(txn, NULL, 0, &dbi));
@@ -39,45 +61,53 @@ int db_env_open(DB_env *const env, char const *const name, unsigned const flags,
 	if(MDB_MAIN_DBI != dbi) return DB_PANIC;
 	return 0;
 }
-void db_env_close(DB_env *const env) {
-	mdb_env_close((MDB_env *)env);
+DB_FN void db__env_close(DB_env *const env) {
+	if(!env) return;
+	mdb_env_close(env->env);
+	env->isa = NULL;
+	env->env = NULL;
+	free(env);
 }
 
-int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
+DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
+	if(!env) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
 	MDB_txn *const psub = parent ? parent->txn : NULL;
 	MDB_txn *subtxn;
-	int rc = mdberr(mdb_txn_begin((MDB_env *)env, psub, flags, &subtxn));
+	int rc = mdberr(mdb_txn_begin(env->env, psub, flags, &subtxn));
 	if(rc < 0) return rc;
 	DB_txn *txn = malloc(sizeof(struct DB_txn));
 	if(!txn) {
 		mdb_txn_abort(subtxn);
 		return DB_ENOMEM;
 	}
+	txn->isa = db_base_mdb;
 	txn->txn = subtxn;
 	txn->flags = flags;
 	txn->cursor = NULL;
 	*out = txn;
 	return 0;
 }
-int db_txn_commit(DB_txn *const txn) {
+DB_FN int db__txn_commit(DB_txn *const txn) {
 	if(!txn) return DB_EINVAL;
 	db_cursor_close(txn->cursor);
 	int rc = mdberr(mdb_txn_commit(txn->txn));
+	txn->isa = NULL;
 	free(txn);
 	return rc;
 }
-void db_txn_abort(DB_txn *const txn) {
+DB_FN void db__txn_abort(DB_txn *const txn) {
 	if(!txn) return;
 	db_cursor_close(txn->cursor);
 	mdb_txn_abort(txn->txn);
+	txn->isa = NULL;
 	free(txn);
 }
-void db_txn_reset(DB_txn *const txn) {
+DB_FN void db__txn_reset(DB_txn *const txn) {
 	if(!txn) return;
 	mdb_txn_reset(txn->txn);
 }
-int db_txn_renew(DB_txn *const txn) {
+DB_FN int db__txn_renew(DB_txn *const txn) {
 	if(!txn) return DB_EINVAL;
 	int rc = mdberr(mdb_txn_renew(txn->txn));
 	if(rc < 0) return rc;
@@ -87,15 +117,15 @@ int db_txn_renew(DB_txn *const txn) {
 	}
 	return 0;
 }
-int db_txn_get_flags(DB_txn *const txn, unsigned *const flags) {
+DB_FN int db__txn_get_flags(DB_txn *const txn, unsigned *const flags) {
 	if(!txn) return DB_EINVAL;
 	if(flags) *flags = txn->flags;
 	return 0;
 }
-int db_txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *const b) {
+DB_FN int db__txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *const b) {
 	return mdb_cmp(txn->txn, MDB_MAIN_DBI, (MDB_val *)a, (MDB_val *)b);
 }
-int db_txn_cursor(DB_txn *const txn, DB_cursor **const out) {
+DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
 	if(!txn->cursor) {
 		int rc = db_cursor_renew(txn, &txn->cursor);
@@ -108,56 +138,75 @@ int db_txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 // Use our own cursor for these rather than mdb_get/put
 // because otherwise MDB has to construct its own temporary cursor
 // on the stack, which is just wasteful if we might need it again.
-int db_get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
+DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
 	DB_cursor *cursor;
 	int rc = db_txn_cursor(txn, &cursor);
 	if(rc < 0) return rc;
 	return db_cursor_seek(cursor, key, data, 0);
 }
-int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
+DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
 	DB_cursor *cursor;
 	int rc = db_txn_cursor(txn, &cursor);
 	if(rc < 0) return rc;
 	return db_cursor_put(cursor, key, data, flags);
 }
-int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
+DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	if(flags) return DB_EINVAL;
 	int rc = mdberr(mdb_del(txn->txn, MDB_MAIN_DBI, (MDB_val *)key, NULL));
 	if(DB_NOTFOUND == rc) return 0; // TODO: Add a flag to expose this.
 	return rc;
 }
 
-int db_cursor_open(DB_txn *const txn, DB_cursor **const out) {
-	return mdberr(mdb_cursor_open(txn->txn, MDB_MAIN_DBI, (MDB_cursor **)out));
+DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
+	if(!txn) return DB_EINVAL;
+	MDB_cursor *c = NULL;
+	int rc = mdberr(mdb_cursor_open(txn->txn, MDB_MAIN_DBI, &c));
+	if(rc < 0) return rc;
+	DB_cursor *cursor = calloc(1, sizeof(DB_cursor));
+	if(!cursor) {
+		mdb_cursor_close(c);
+		return DB_ENOMEM;
+	}
+	cursor->isa = db_base_mdb;
+	cursor->cursor = c;
+	*out = cursor;
+	return 0;
 }
-void db_cursor_close(DB_cursor *const cursor) {
-	mdb_cursor_close((MDB_cursor *)cursor);
+DB_FN void db__cursor_close(DB_cursor *const cursor) {
+	if(!cursor) return;
+	mdb_cursor_close(cursor->cursor);
+	cursor->isa = NULL;
+	free(cursor);
 }
-void db_cursor_reset(DB_cursor *const cursor) {
+DB_FN void db__cursor_reset(DB_cursor *const cursor) {
 	// Do nothing.
 }
-int db_cursor_renew(DB_txn *const txn, DB_cursor **const out) {
+DB_FN int db__cursor_renew(DB_txn *const txn, DB_cursor **const out) {
+	if(!txn) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
-	if(*out) return mdberr(mdb_cursor_renew(txn->txn, (MDB_cursor *)*out));
-	return mdberr(mdb_cursor_open(txn->txn, MDB_MAIN_DBI, (MDB_cursor **)out));
+	if(*out) return mdberr(mdb_cursor_renew(txn->txn, out[0]->cursor));
+	return db_cursor_open(txn, out);
 }
-int db_cursor_clear(DB_cursor *const cursor) {
-	return mdberr(mdb_cursor_renew(mdb_cursor_txn((MDB_cursor *)cursor), (MDB_cursor *)cursor));
+DB_FN int db__cursor_clear(DB_cursor *const cursor) {
+	if(!cursor) return DB_EINVAL;
+	MDB_cursor *const c = cursor->cursor;
+	return mdberr(mdb_cursor_renew(mdb_cursor_txn(c), c));
 }
-int db_cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
+DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor);
-	return mdb_cmp(mdb_cursor_txn((MDB_cursor *)cursor), MDB_MAIN_DBI, (MDB_val const *)a, (MDB_val const *)b);
+	return mdb_cmp(mdb_cursor_txn(cursor->cursor), MDB_MAIN_DBI, (MDB_val const *)a, (MDB_val const *)b);
 }
 
-int db_cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const data) {
+DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const data) {
 	if(!cursor) return DB_EINVAL;
-	int rc = mdberr(mdb_cursor_get((MDB_cursor *)cursor, (MDB_val *)key, (MDB_val *)data, MDB_GET_CURRENT));
+	int rc = mdberr(mdb_cursor_get(cursor->cursor, (MDB_val *)key, (MDB_val *)data, MDB_GET_CURRENT));
 	if(DB_EINVAL == rc) return DB_NOTFOUND;
 	return rc;
 }
-int db_cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
+DB_FN int db__cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
+	if(!cursor) return DB_EINVAL;
 	if(!key) return DB_EINVAL;
-	MDB_cursor *const c = (MDB_cursor *)cursor;
+	MDB_cursor *const c = cursor->cursor;
 	MDB_val *const k = (MDB_val *)key;
 	MDB_val *const d = (MDB_val *)data;
 	MDB_val const orig = *k;
@@ -172,31 +221,37 @@ int db_cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const dat
 		return mdberr(mdb_cursor_get(c, k, d, MDB_LAST));
 	} else return rc;
 }
-int db_cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
+DB_FN int db__cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
+	if(!cursor) return DB_EINVAL;
 	if(0 == dir) return DB_EINVAL;
 	MDB_cursor_op const op = dir < 0 ? MDB_LAST : MDB_FIRST;
 	MDB_val _k[1], _d[1];
 	MDB_val *const k = key ? (MDB_val *)key : _k;
 	MDB_val *const d = data ? (MDB_val *)data : _d;
-	return mdberr(mdb_cursor_get((MDB_cursor *)cursor, (MDB_val *)k, (MDB_val *)d, op));
+	return mdberr(mdb_cursor_get(cursor->cursor, (MDB_val *)k, (MDB_val *)d, op));
 }
-int db_cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
+DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
+	if(!cursor) return DB_EINVAL;
 	if(0 == dir) return DB_EINVAL;
 	MDB_cursor_op const op = dir < 0 ? MDB_PREV : MDB_NEXT;
 	MDB_val _k[1], _d[1];
 	MDB_val *const k = key ? (MDB_val *)key : _k;
 	MDB_val *const d = data ? (MDB_val *)data : _d;
-	return mdberr(mdb_cursor_get((MDB_cursor *)cursor, (MDB_val *)k, (MDB_val *)d, op));
+	return mdberr(mdb_cursor_get(cursor->cursor, (MDB_val *)k, (MDB_val *)d, op));
 }
 
-int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
+DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
+	if(!cursor) return DB_EINVAL;
 	MDB_val null = { 0, NULL };
 	MDB_val *const k = (MDB_val *)key;
 	MDB_val *const d = data ? (MDB_val *)data : &null;
-	return mdberr(mdb_cursor_put((MDB_cursor *)cursor, k, d, flags));
+	return mdberr(mdb_cursor_put(cursor->cursor, k, d, flags));
 }
-int db_cursor_del(DB_cursor *const cursor, unsigned const flags) {
+DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
+	if(!cursor) return DB_EINVAL;
 	if(flags) return DB_EINVAL;
-	return mdberr(mdb_cursor_del((MDB_cursor *)cursor, 0));
+	return mdberr(mdb_cursor_del(cursor->cursor, 0));
 }
+
+DB_BASE_V0(mdb)
 
