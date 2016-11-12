@@ -14,6 +14,7 @@ DB_base const db_base_##name[1] = {{ \
 	\
 	.env_create = db__env_create, \
 	.env_set_mapsize = db__env_set_mapsize, \
+	.env_set_cmdfn = db__env_set_cmdfn, \
 	.env_open = db__env_open, \
 	.env_close = db__env_close, \
 	\
@@ -29,6 +30,7 @@ DB_base const db_base_##name[1] = {{ \
 	.get = db__get, \
 	.put = db__put, \
 	.del = db__del, \
+	.cmd = db__cmd, \
 	\
 	.cursor_open = db__cursor_open, \
 	.cursor_close = db__cursor_close, \
@@ -52,6 +54,7 @@ typedef struct {
 	// V0 methods
 	int (*env_create)(DB_env **const out);
 	int (*env_set_mapsize)(DB_env *const env, size_t const size);
+	int (*env_set_cmdfn)(DB_env *const env, DB_cmdfn const fn, void *ctx);
 	int (*env_open)(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
 	void (*env_close)(DB_env *const env);
 
@@ -67,6 +70,7 @@ typedef struct {
 	int (*get)(DB_txn *const txn, DB_val *const key, DB_val *const data);
 	int (*put)(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags);
 	int (*del)(DB_txn *const txn, DB_val *const key, unsigned const flags);
+	int (*cmd)(DB_txn *const txn, unsigned char const *const buf, size_t const len);
 
 	int (*cursor_open)(DB_txn *const txn, DB_cursor **const out);
 	void (*cursor_close)(DB_cursor *const cursor);

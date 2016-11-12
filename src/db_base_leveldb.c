@@ -45,6 +45,8 @@ struct DB_env {
 	MDB_env *tmpenv;
 	leveldb_writeoptions_t *wopts;
 	MDB_cmp_func *cmp;
+	DB_cmdfn cmdfn;
+	void *cmdctx;
 };
 struct DB_txn {
 	DB_base const *isa;
@@ -349,6 +351,12 @@ DB_FN int db__env_create(DB_env **const out) {
 DB_FN int db__env_set_mapsize(DB_env *const env, size_t const size) {
 	return 0;
 }
+DB_FN int db__env_set_cmdfn(DB_env *const env, DB_cmdfn const fn, void *ctx) {
+	if(!env) return DB_EINVAL;
+	env->cmdfn = fn;
+	env->cmdctx = ctx;
+	return 0;
+}
 DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
 	if(!env) return DB_EINVAL;
 	char *err = NULL;
@@ -402,6 +410,8 @@ DB_FN void db__env_close(DB_env *const env) {
 	}
 	env->cmp = NULL;
 	env->isa = NULL;
+	env->cmdfn = NULL;
+	env->cmdctx = NULL;
 	assert_zeroed(env, 1);
 	free(env);
 }
@@ -573,6 +583,11 @@ DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	int rc = mdberr(mdb_put(txn->tmptxn, MDB_MAIN_DBI, (MDB_val *)k, (MDB_val *)d, 0));
 	if(rc < 0) return rc;
 	return 0;
+}
+DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
+	if(!txn) return DB_EINVAL;
+	if(!txn->env->cmdfn) return DB_EINVAL;
+	return txn->env->cmdfn(txn->env->cmdctx, txn, buf, len);
 }
 
 DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {

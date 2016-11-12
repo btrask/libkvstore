@@ -13,9 +13,12 @@
 struct DB_env {
 	DB_base const *isa;
 	MDB_env *env;
+	DB_cmdfn cmdfn;
+	void *cmdctx;
 };
 struct DB_txn {
 	DB_base const *isa;
+	DB_env *env;
 	MDB_txn *txn;
 	unsigned flags;
 	DB_cursor *cursor;
@@ -47,6 +50,12 @@ DB_FN int db__env_set_mapsize(DB_env *const env, size_t const size) {
 	if(!env) return DB_EINVAL;
 	return mdberr(mdb_env_set_mapsize(env->env, size));
 }
+DB_FN int db__env_set_cmdfn(DB_env *const env, DB_cmdfn const fn, void *ctx) {
+	if(!env) return DB_EINVAL;
+	env->cmdfn = fn;
+	env->cmdctx = ctx;
+	return 0;
+}
 DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
 	if(!env) return DB_EINVAL;
 	int rc = mdberr(mdb_env_open(env->env, name, flags | MDB_NOSUBDIR, mode));
@@ -66,6 +75,8 @@ DB_FN void db__env_close(DB_env *const env) {
 	mdb_env_close(env->env);
 	env->isa = NULL;
 	env->env = NULL;
+	env->cmdfn = NULL;
+	env->cmdctx = NULL;
 	free(env);
 }
 
@@ -82,6 +93,7 @@ DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const 
 		return DB_ENOMEM;
 	}
 	txn->isa = db_base_mdb;
+	txn->env = env;
 	txn->txn = subtxn;
 	txn->flags = flags;
 	txn->cursor = NULL;
@@ -93,6 +105,7 @@ DB_FN int db__txn_commit(DB_txn *const txn) {
 	db_cursor_close(txn->cursor);
 	int rc = mdberr(mdb_txn_commit(txn->txn));
 	txn->isa = NULL;
+	txn->env = NULL;
 	free(txn);
 	return rc;
 }
@@ -101,6 +114,7 @@ DB_FN void db__txn_abort(DB_txn *const txn) {
 	db_cursor_close(txn->cursor);
 	mdb_txn_abort(txn->txn);
 	txn->isa = NULL;
+	txn->env = NULL;
 	free(txn);
 }
 DB_FN void db__txn_reset(DB_txn *const txn) {
@@ -151,10 +165,16 @@ DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsi
 	return db_cursor_put(cursor, key, data, flags);
 }
 DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
+	if(!txn) return DB_EINVAL;
 	if(flags) return DB_EINVAL;
 	int rc = mdberr(mdb_del(txn->txn, MDB_MAIN_DBI, (MDB_val *)key, NULL));
 	if(DB_NOTFOUND == rc) return 0; // TODO: Add a flag to expose this.
 	return rc;
+}
+DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
+	if(!txn) return DB_EINVAL;
+	if(!txn->env->cmdfn) return DB_EINVAL;
+	return txn->env->cmdfn(txn->env->cmdctx, txn, buf, len);
 }
 
 DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {

@@ -24,6 +24,10 @@ int db_env_set_mapsize(DB_env *const env, size_t const size) {
 	if(!env) return DB_EINVAL;
 	return env->isa->env_set_mapsize(env, size);
 }
+int db_env_set_cmdfn(DB_env *const env, DB_cmdfn const fn, void *ctx) {
+	if(!env) return DB_EINVAL;
+	return env->isa->env_set_cmdfn(env, fn, ctx);
+}
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
 	if(!env) return DB_EINVAL;
 	return env->isa->env_open(env, name, flags, mode);
@@ -77,6 +81,10 @@ int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned co
 int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->del(txn, key, flags);
+}
+int db_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
+	if(!txn) return DB_EINVAL;
+	return txn->isa->cmd(txn, buf, len);
 }
 
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out) {

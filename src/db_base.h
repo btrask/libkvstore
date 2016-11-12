@@ -43,8 +43,11 @@ typedef struct DB_env DB_env;
 typedef struct DB_txn DB_txn;
 typedef struct DB_cursor DB_cursor;
 
+typedef int (*DB_cmdfn)(void *ctx, DB_txn *const txn, unsigned char const *const buf, size_t const len);
+
 int db_env_create(DB_env **const out);
 int db_env_set_mapsize(DB_env *const env, size_t const size);
+int db_env_set_cmdfn(DB_env *const env, DB_cmdfn const fn, void *ctx);
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
 void db_env_close(DB_env *const env);
 
@@ -66,6 +69,7 @@ int db_txn_cursor(DB_txn *const txn, DB_cursor **const out);
 int db_get(DB_txn *const txn, DB_val *const key, DB_val *const data);
 int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags);
 int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags); // Doesn't return DB_NOTFOUND if key doesn't exist (a flag may be added in the future).
+int db_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len); // For efficient logical replication. Must call set_cmdfn to implement.
 
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out);
 void db_cursor_close(DB_cursor *const cursor);
