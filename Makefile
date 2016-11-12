@@ -7,6 +7,10 @@ SRC_DIR := $(ROOT_DIR)/src
 DEPS_DIR := $(ROOT_DIR)/deps
 INCLUDE_DIR := $(ROOT_DIR)/include
 
+USE_MDB ?= 1
+USE_LEVELDB ?= 1
+USE_ROCKSDB ?= 0
+USE_HYPER ?= 0
 
 CFLAGS += -std=c99 -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=500
 CFLAGS += -g -fno-omit-frame-pointer
@@ -72,35 +76,46 @@ OBJECTS := $(BUILD_DIR)/src/db_base_dynamic.o $(BUILD_DIR)/src/db_range.o $(BUIL
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
 
 ifeq ($(DB),rocksdb)
-  CFLAGS += -DUSE_ROCKSDB
-  SHARED_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.so
-  STATIC_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.a
-  LIBS += -lrocksdb
-  LIBS += -lz
-  LIBS += -lstdc++
-  OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+  CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
 else ifeq ($(DB),hyper)
-  SHARED_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.so
-  STATIC_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.a
-  LIBS += -lhyperleveldb
-  LIBS += -lstdc++
-  OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+  CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
 else ifeq ($(DB),leveldb)
   CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
 else
   CFLAGS += -DDB_BASE_DEFAULT=db_base_mdb
 endif
 
-ifndef $(NO_LEVELDB)
-CFLAGS += -I$(DEPS_DIR)/leveldb/include -I$(DEPS_DIR)/snappy/include
-SHARED_LIBS += $(DEPS_DIR)/leveldb/out-shared/libleveldb.so $(DEPS_DIR)/snappy/.libs/libsnappy.so
-STATIC_LIBS += $(DEPS_DIR)/leveldb/out-static/libleveldb.a $(DEPS_DIR)/snappy/.libs/libsnappy.a
-LIBS += -lstdc++
-OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+ifeq ($(USE_MDB),1)
+  CFLAGS += -DDB_BASE_MDB
+  OBJECTS += $(BUILD_DIR)/src/db_base_mdb.o
 endif
 
-ifndef $(NO_MDB)
-OBJECTS += $(BUILD_DIR)/src/db_base_mdb.o
+ifeq ($(USE_LEVELDB),1)
+  CFLAGS += -DDB_BASE_LEVELDB
+  CFLAGS += -I$(DEPS_DIR)/leveldb/include -I$(DEPS_DIR)/snappy/include
+  SHARED_LIBS += $(DEPS_DIR)/leveldb/out-shared/libleveldb.so $(DEPS_DIR)/snappy/.libs/libsnappy.so
+  STATIC_LIBS += $(DEPS_DIR)/leveldb/out-static/libleveldb.a $(DEPS_DIR)/snappy/.libs/libsnappy.a
+  LIBS += -lstdc++
+  OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+endif
+
+ifeq ($(USE_ROCKSDB),1)
+  CFLAGS += -DDB_BASE_ROCKSDB
+  SHARED_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.so
+  STATIC_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.a
+  LIBS += -lrocksdb
+  LIBS += -lz
+  LIBS += -lstdc++
+  OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+endif
+
+ifeq ($(USE_HYPER),1)
+  CFLAGS += -DDB_BASE_HYPER
+  SHARED_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.so
+  STATIC_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.a
+  LIBS += -lhyperleveldb
+  LIBS += -lstdc++
+  OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
 endif
 
 HEADERS := $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_range.h $(INCLUDE_DIR)/kvstore/db_schema.h

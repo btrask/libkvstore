@@ -9,7 +9,8 @@
 #include <unistd.h> // For unlink(2)
 #include <sys/resource.h>
 
-#ifdef USE_ROCKSDB
+// TODO: Proper Rocks and Hyper support.
+#ifdef DB_BASE_ROCKSDB
 #include "rocks_wrapper.h"
 #else
 #include <leveldb/c.h>

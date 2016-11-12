@@ -91,6 +91,8 @@ typedef struct {
 extern DB_base const *const db_base_default;
 extern DB_base const db_base_mdb[1];
 extern DB_base const db_base_leveldb[1];
+extern DB_base const db_base_rocksdb[1];
+extern DB_base const db_base_hyper[1];
 extern DB_base const db_base_lsmdb[1];
 
 #endif // DB_DYNAMIC
