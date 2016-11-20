@@ -13,7 +13,8 @@
 struct DB_env {
 	DB_base const *isa;
 	MDB_env *env;
-	DB_cmdfn cmdfn;
+	DB_cmp_func_bad cmpfn_bad;
+	DB_cmd_func cmdfn;
 	void *cmdctx;
 };
 struct DB_txn {
@@ -50,7 +51,12 @@ DB_FN int db__env_set_mapsize(DB_env *const env, size_t const size) {
 	if(!env) return DB_EINVAL;
 	return mdberr(mdb_env_set_mapsize(env->env, size));
 }
-DB_FN int db__env_set_cmdfn(DB_env *const env, DB_cmdfn const fn, void *ctx) {
+DB_FN int db__env_set_compare_bad(DB_env *const env, DB_cmp_func_bad const fn) {
+	if(!env) return DB_EINVAL;
+	env->cmpfn_bad = fn;
+	return 0;
+}
+DB_FN int db__env_set_command(DB_env *const env, DB_cmd_func const fn, void *ctx) {
 	if(!env) return DB_EINVAL;
 	env->cmdfn = fn;
 	env->cmdctx = ctx;
@@ -60,21 +66,29 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 	if(!env) return DB_EINVAL;
 	int rc = mdberr(mdb_env_open(env->env, name, flags | MDB_NOSUBDIR, mode));
 	if(rc < 0) return rc;
-	MDB_txn *txn;
-	rc = mdberr(mdb_txn_begin(env->env, NULL, 0, &txn));
-	if(rc < 0) return rc;
+	MDB_txn *txn = NULL;
 	MDB_dbi dbi;
+	rc = mdberr(mdb_txn_begin(env->env, NULL, 0, &txn));
+	if(rc < 0) goto cleanup;
 	rc = mdberr(mdb_dbi_open(txn, NULL, 0, &dbi));
-	mdb_txn_abort(txn);
-	if(rc < 0) return rc;
+	if(rc < 0) goto cleanup;
+	if(env->cmpfn_bad) {
+		rc = mdberr(mdb_set_compare(txn, dbi, (MDB_cmp_func *)env->cmpfn_bad));
+		if(rc < 0) goto cleanup;
+	}
+	rc = mdberr(mdb_txn_commit(txn)); txn = NULL;
+	if(rc < 0) goto cleanup;
 	if(MDB_MAIN_DBI != dbi) return DB_PANIC;
-	return 0;
+cleanup:
+	mdb_txn_abort(txn); txn = NULL;
+	return rc;
 }
 DB_FN void db__env_close(DB_env *const env) {
 	if(!env) return;
 	mdb_env_close(env->env);
 	env->isa = NULL;
 	env->env = NULL;
+	env->cmpfn_bad = NULL;
 	env->cmdfn = NULL;
 	env->cmdctx = NULL;
 	free(env);

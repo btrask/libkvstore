@@ -24,9 +24,13 @@ int db_env_set_mapsize(DB_env *const env, size_t const size) {
 	if(!env) return DB_EINVAL;
 	return env->isa->env_set_mapsize(env, size);
 }
-int db_env_set_cmdfn(DB_env *const env, DB_cmdfn const fn, void *ctx) {
+int db_env_set_compare_bad(DB_env *const env, DB_cmp_func_bad const fn) {
 	if(!env) return DB_EINVAL;
-	return env->isa->env_set_cmdfn(env, fn, ctx);
+	return env->isa->env_set_compare_bad(env, fn);
+}
+int db_env_set_command(DB_env *const env, DB_cmd_func const fn, void *ctx) {
+	if(!env) return DB_EINVAL;
+	return env->isa->env_set_command(env, fn, ctx);
 }
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
 	if(!env) return DB_EINVAL;

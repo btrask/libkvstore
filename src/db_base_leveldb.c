@@ -42,11 +42,12 @@ struct DB_env {
 	DB_base const *isa;
 	leveldb_options_t *opts;
 	leveldb_filterpolicy_t *filterpolicy;
+	leveldb_comparator_t *comparator;
 	leveldb_t *db;
 	MDB_env *tmpenv;
 	leveldb_writeoptions_t *wopts;
-	MDB_cmp_func *cmp;
-	DB_cmdfn cmdfn;
+	DB_cmp_func_bad cmpfn_bad;
+	DB_cmd_func cmdfn;
 	void *cmdctx;
 };
 struct DB_txn {
@@ -82,12 +83,30 @@ static char *tohex(MDB_val const *const x) {
 }
 
 
-static int compare_default(MDB_val const *const a, MDB_val const *const b) {
-	int x = memcmp(a->mv_data, b->mv_data, MIN(a->mv_size, b->mv_size));
+static int cmp_default(DB_val const *const a, DB_val const *const b) {
+	int x = memcmp(a->data, b->data, MIN(a->size, b->size));
 	if(0 != x) return x;
-	if(a->mv_size < b->mv_size) return -1;
-	if(a->mv_size > b->mv_size) return +1;
+	if(a->size < b->size) return -1;
+	if(a->size > b->size) return +1;
 	return 0;
+}
+static int cmp_internal(DB_env *const env, DB_val const *const a, DB_val const *const b) {
+	assert(env);
+	DB_cmp_func_bad cmp = env->cmpfn_bad;
+	if(!cmp) cmp = cmp_default;
+	return cmp(a, b);
+}
+static int cmp_wrap(void *ctx, char const *a, size_t alen, char const *b, size_t blen) {
+	DB_env *env = ctx;
+	DB_val const aval = {alen, (void *)a};
+	DB_val const bval = {blen, (void *)b};
+	return cmp_internal(env, &aval, &bval);
+}
+static char const *cmp_name(void *ctx) {
+	return "libkvstore.DefaultComparator";
+}
+static void cmp_destructor(void *ctx) {
+	// Do nothing
 }
 
 
@@ -138,17 +157,16 @@ static void storage_free(struct storage *const head) {
 
 struct LDB_cursor {
 	leveldb_iterator_t *iter;
-	MDB_cmp_func *cmp;
+	DB_cmp_func_bad cmpfn_bad;
 	bool valid;
 	bool storage_current;
 	struct storage *keys;
 	struct storage *vals;
 };
 static void ldb_cursor_close(LDB_cursor *const cursor);
-static int ldb_cursor_open(leveldb_t *const db, leveldb_readoptions_t *const ropts, MDB_cmp_func *const cmp, LDB_cursor **const out) {
+static int ldb_cursor_open(leveldb_t *const db, leveldb_readoptions_t *const ropts, DB_cmp_func_bad const cmp, LDB_cursor **const out) {
 	if(!db) return DB_EINVAL;
 	if(!ropts) return DB_EINVAL;
-	if(!cmp) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
 
 	LDB_cursor *cursor = calloc(1, sizeof(struct LDB_cursor));
@@ -159,7 +177,7 @@ static int ldb_cursor_open(leveldb_t *const db, leveldb_readoptions_t *const rop
 	if(!cursor->iter) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
 
-	cursor->cmp = cmp;
+	cursor->cmpfn_bad = cmp;
 	cursor->valid = false;
 
 	cursor->storage_current = false;
@@ -180,7 +198,7 @@ static void ldb_cursor_storage_invalidate(LDB_cursor *const cursor) {
 static void ldb_cursor_close(LDB_cursor *const cursor) {
 	if(!cursor) return;
 	leveldb_iter_destroy(cursor->iter); cursor->iter = NULL;
-	cursor->cmp = NULL;
+	cursor->cmpfn_bad = NULL;
 	cursor->valid = false;
 	ldb_cursor_storage_invalidate(cursor);
 	assert_zeroed(cursor, 1);
@@ -192,17 +210,23 @@ static int ldb_cursor_clear(LDB_cursor *const cursor) {
 	ldb_cursor_storage_invalidate(cursor);
 	return 0;
 }
-static int ldb_cursor_renew(leveldb_t *const db, leveldb_readoptions_t *const ropts, MDB_cmp_func *const cmp, LDB_cursor **const out) {
+static int ldb_cursor_renew(leveldb_t *const db, leveldb_readoptions_t *const ropts, DB_cmp_func_bad const cmp, LDB_cursor **const out) {
 	if(!out) return DB_EINVAL;
 	if(!*out) return ldb_cursor_open(db, ropts, cmp, out);
 	LDB_cursor *const cursor = *out;
 	leveldb_iter_destroy(cursor->iter); cursor->iter = NULL;
 	cursor->iter = leveldb_create_iterator(db, ropts);
 	if(!cursor->iter) return DB_ENOMEM;
-	cursor->cmp = cmp;
+	cursor->cmpfn_bad = cmp;
 	cursor->valid = false;
 	ldb_cursor_storage_invalidate(cursor);
 	return 0;
+}
+static int ldb_cursor_cmp(LDB_cursor *const cursor, MDB_val const *const a, MDB_val const *const b) {
+	assert(cursor);
+	DB_cmp_func_bad cmp = cursor->cmpfn_bad;
+	if(!cmp) cmp = cmp_default;
+	return cmp((DB_val const *)a, (DB_val const *)b);
 }
 static int ldb_cursor_current(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val) {
 	if(!cursor) return DB_EINVAL;
@@ -263,7 +287,7 @@ static int ldb_cursor_seek(LDB_cursor *const cursor, MDB_val *const key, MDB_val
 	if(dir < 0) {
 		if(rc < 0) {
 			leveldb_iter_seek_to_last(cursor->iter);
-		} else if(0 != cursor->cmp(key, orig)) {
+		} else if(0 != ldb_cursor_cmp(cursor, key, orig)) {
 			leveldb_iter_prev(cursor->iter);
 		} else return rc;
 		cursor->valid = !!leveldb_iter_valid(cursor->iter);
@@ -271,7 +295,7 @@ static int ldb_cursor_seek(LDB_cursor *const cursor, MDB_val *const key, MDB_val
 		return ldb_cursor_current(cursor, key, val);
 	}
 	if(rc < 0) return rc;
-	if(0 == cursor->cmp(key, orig)) return rc;
+	if(0 == ldb_cursor_cmp(cursor, key, orig)) return rc;
 	cursor->valid = 0;
 	return DB_NOTFOUND;
 }
@@ -331,6 +355,13 @@ DB_FN int db__env_create(DB_env **const out) {
 		return DB_ENOMEM;
 	}
 	leveldb_options_set_filter_policy(env->opts, env->filterpolicy);
+	env->comparator = leveldb_comparator_create(env, cmp_destructor, cmp_wrap, cmp_name);
+	if(!env->comparator) {
+		db_env_close(env);
+		return DB_ENOMEM;
+	}
+	leveldb_options_set_comparator(env->opts, env->comparator);
+	env->cmpfn_bad = NULL;
 
 	int rc = mdberr(mdb_env_create(&env->tmpenv));
 	if(rc < 0) {
@@ -345,14 +376,18 @@ DB_FN int db__env_create(DB_env **const out) {
 	}
 	leveldb_writeoptions_set_sync(env->wopts, 1);
 
-	env->cmp = compare_default;
 	*out = env;
 	return 0;
 }
 DB_FN int db__env_set_mapsize(DB_env *const env, size_t const size) {
 	return 0;
 }
-DB_FN int db__env_set_cmdfn(DB_env *const env, DB_cmdfn const fn, void *ctx) {
+DB_FN int db__env_set_compare_bad(DB_env *const env, DB_cmp_func_bad const fn) {
+	if(!env) return DB_EINVAL;
+	env->cmpfn_bad = fn;
+	return 0;
+}
+DB_FN int db__env_set_command(DB_env *const env, DB_cmd_func const fn, void *ctx) {
 	if(!env) return DB_EINVAL;
 	env->cmdfn = fn;
 	env->cmdctx = ctx;
@@ -387,6 +422,13 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 		mdb_txn_abort(tmptxn);
 		return DB_PANIC;
 	}
+	MDB_cmp_func *cmp = (MDB_cmp_func *)env->cmpfn_bad;
+	if(!cmp) cmp = (MDB_cmp_func *)cmp_default;
+	rc = mdberr(mdb_set_compare(tmptxn, dbi, cmp));
+	if(rc < 0) {
+		mdb_txn_abort(tmptxn);
+		return rc;
+	}
 	rc = mdberr(mdb_txn_commit(tmptxn));
 	if(rc < 0) return rc;
 
@@ -402,6 +444,9 @@ DB_FN void db__env_close(DB_env *const env) {
 	if(env->filterpolicy) {
 		leveldb_filterpolicy_destroy(env->filterpolicy); env->filterpolicy = NULL;
 	}
+	if(env->comparator) {
+		leveldb_comparator_destroy(env->comparator); env->comparator = NULL;
+	}
 	if(env->db) {
 		leveldb_close(env->db); env->db = NULL;
 	}
@@ -409,8 +454,8 @@ DB_FN void db__env_close(DB_env *const env) {
 	if(env->wopts) {
 		leveldb_writeoptions_destroy(env->wopts); env->wopts = NULL;
 	}
-	env->cmp = NULL;
 	env->isa = NULL;
+	env->cmpfn_bad = NULL;
 	env->cmdfn = NULL;
 	env->cmdctx = NULL;
 	assert_zeroed(env, 1);
@@ -550,7 +595,7 @@ DB_FN int db__txn_get_flags(DB_txn *const txn, unsigned *const flags) {
 }
 DB_FN int db__txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *const b) {
 	assert(txn); // We can't report an error from this function.
-	return txn->env->cmp((MDB_val *)a, (MDB_val *)b);
+	return cmp_internal(txn->env, a, b);
 }
 DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
@@ -627,7 +672,7 @@ DB_FN int db__cursor_renew(DB_txn *const txn, DB_cursor **const out) {
 	DB_cursor *const cursor = *out;
 	cursor->txn = txn;
 	cursor->state = S_INVALID;
-	int rc = ldb_cursor_renew(txn->env->db, txn->ropts, txn->env->cmp, &cursor->persist);
+	int rc = ldb_cursor_renew(txn->env->db, txn->ropts, txn->env->cmpfn_bad, &cursor->persist);
 	if(rc < 0) return rc;
 	return 0;
 }
@@ -661,7 +706,10 @@ static int db_cursor_update(DB_cursor *const cursor, int rc1, MDB_val *const k1,
 		int x = 0;
 		if(DB_NOTFOUND == rc1) x = +1;
 		if(DB_NOTFOUND == rc2) x = -1;
-		if(0 == x) x = cursor->txn->env->cmp(k1, k2) * (dir ? dir : 1);
+		if(0 == x) {
+			x = db_cursor_cmp(cursor, (DB_val *)k1, (DB_val *)k2)
+				* (dir ? dir : 1);
+		}
 		if(x > 0) {
 			cursor->state = S_PERSIST;
 			if(key) *key = *(DB_val *)k2;

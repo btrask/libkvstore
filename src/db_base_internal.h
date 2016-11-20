@@ -14,7 +14,8 @@ DB_base const db_base_##name[1] = {{ \
 	\
 	.env_create = db__env_create, \
 	.env_set_mapsize = db__env_set_mapsize, \
-	.env_set_cmdfn = db__env_set_cmdfn, \
+	.env_set_compare_bad = db__env_set_compare_bad, \
+	.env_set_command = db__env_set_command, \
 	.env_open = db__env_open, \
 	.env_close = db__env_close, \
 	\
@@ -54,7 +55,8 @@ typedef struct {
 	// V0 methods
 	int (*env_create)(DB_env **const out);
 	int (*env_set_mapsize)(DB_env *const env, size_t const size);
-	int (*env_set_cmdfn)(DB_env *const env, DB_cmdfn const fn, void *ctx);
+	int (*env_set_compare_bad)(DB_env *const env, DB_cmp_func_bad const fn);
+	int (*env_set_command)(DB_env *const env, DB_cmd_func const fn, void *ctx);
 	int (*env_open)(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
 	void (*env_close)(DB_env *const env);
 

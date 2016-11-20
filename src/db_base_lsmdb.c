@@ -45,7 +45,11 @@ DB_FN int db__env_set_mapsize(DB_env *const env, size_t const size) {
 	if(!env) return DB_EINVAL;
 	return mdberr(lsmdb_env_set_mapsize(env->env, size));
 }
-DB_FN int db__env_set_cmdfn(DB_env *const env, DB_cmdfn const fn, void *ctx) {
+DB_FN int db__env_set_compare_bad(DB_env *const env, DB_cmp_func_bad const fn) {
+	if(!env) return DB_EINVAL;
+	return mdberr(lsmdb_env_set_compare(env->env, (MDB_cmp_func *)fn));
+}
+DB_FN int db__env_set_command(DB_env *const env, DB_cmd_func const fn, void *ctx) {
 	if(!env) return DB_EINVAL;
 	env->cmdfn = fn;
 	env->cmdctx = ctx;

@@ -43,11 +43,13 @@ typedef struct DB_env DB_env;
 typedef struct DB_txn DB_txn;
 typedef struct DB_cursor DB_cursor;
 
-typedef int (*DB_cmdfn)(void *ctx, DB_txn *const txn, unsigned char const *const buf, size_t const len);
+typedef int (*DB_cmp_func_bad)(DB_val const *const a, DB_val const *const b);
+typedef int (*DB_cmd_func)(void *ctx, DB_txn *const txn, unsigned char const *const buf, size_t const len);
 
 int db_env_create(DB_env **const out);
 int db_env_set_mapsize(DB_env *const env, size_t const size);
-int db_env_set_cmdfn(DB_env *const env, DB_cmdfn const fn, void *ctx);
+int db_env_set_compare_bad(DB_env *const env, DB_cmp_func_bad const fn); // Doesn't support context pointer due to limitation of MDB API.
+int db_env_set_command(DB_env *const env, DB_cmd_func const fn, void *ctx);
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
 void db_env_close(DB_env *const env);
 
