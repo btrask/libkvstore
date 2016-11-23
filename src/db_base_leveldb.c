@@ -103,7 +103,7 @@ static int cmp_wrap(void *ctx, char const *a, size_t alen, char const *b, size_t
 	return cmp_internal(env, &aval, &bval);
 }
 static char const *cmp_name(void *ctx) {
-	return "libkvstore.DefaultComparator";
+	return "leveldb.BytewiseComparator"; // For compatibility with existing databases.
 }
 static void cmp_destructor(void *ctx) {
 	// Do nothing
