@@ -52,7 +52,7 @@ DB_FN int db__env_config(DB_env *const env, DB_cfg const type, void *data) {
 	case DB_CFG_MAPSIZE: {
 		size_t *const sp = data;
 		return mdberr(mdb_env_set_mapsize(env->env, *sp));
-	} case DB_CFG_COMPARE: *env->cmp = *(DB_cmp_data *)data; return 0;
+	} case DB_CFG_COMPARE: return DB_ENOTSUP; //*env->cmp = *(DB_cmp_data *)data; return 0;
 	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
 	case DB_CFG_TXNSIZE: return 0;
 	default: return DB_ENOTSUP;

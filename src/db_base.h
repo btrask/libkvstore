@@ -45,9 +45,8 @@ typedef struct DB_txn DB_txn;
 typedef struct DB_cursor DB_cursor;
 
 typedef int (*DB_cmp_func)(void *ctx, DB_txn *const txn, DB_val const *const a, DB_val const *const b);
-typedef int (*DB_cmp_func_bad)(DB_val const *const a, DB_val const *const b);
 typedef struct {
-	DB_cmp_func_bad fn; // TODO
+	DB_cmp_func fn;
 	void *ctx;
 } DB_cmp_data;
 

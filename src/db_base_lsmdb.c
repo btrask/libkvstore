@@ -46,10 +46,8 @@ DB_FN int db__env_config(DB_env *const env, DB_cfg const type, void *data) {
 	case DB_CFG_MAPSIZE: {
 		size_t *const sp = data;
 		return mdberr(lsmdb_env_set_mapsize(env->env, *sp));
-	} case DB_CFG_COMPARE: {
-		DB_cmp_data const *const cmp = data;
-		return mdberr(lsmdb_env_set_compare(env->env, (MDB_cmp_func *)cmp->fn));
-	} case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
+	} case DB_CFG_COMPARE: return DB_ENOTSUP;
+	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
 	case DB_CFG_TXNSIZE: return 0;
 	default: return DB_ENOTSUP;
 	}

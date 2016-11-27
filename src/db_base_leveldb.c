@@ -91,9 +91,9 @@ static int cmp_default(DB_val const *const a, DB_val const *const b) {
 }
 static int cmp_internal(DB_env *const env, DB_val const *const a, DB_val const *const b) {
 	assert(env);
-	DB_cmp_func_bad cmp = env->cmp->fn;
-	if(!cmp) cmp = cmp_default;
-	return cmp(a, b);
+//	DB_cmp_func_bad cmp = env->cmp->fn;
+//	if(!cmp) cmp = cmp_default;
+	return cmp_default(a, b);
 }
 static int cmp_wrap(void *ctx, char const *a, size_t alen, char const *b, size_t blen) {
 	DB_env *env = ctx;
@@ -224,9 +224,9 @@ static int ldb_cursor_renew(leveldb_t *const db, leveldb_readoptions_t *const ro
 }
 static int ldb_cursor_cmp(LDB_cursor *const cursor, MDB_val const *const a, MDB_val const *const b) {
 	assert(cursor);
-	DB_cmp_func_bad cmp = cursor->cmp->fn;
-	if(!cmp) cmp = cmp_default;
-	return cmp((DB_val const *)a, (DB_val const *)b);
+//	DB_cmp_func_bad cmp = cursor->cmp->fn;
+//	if(!cmp) cmp = cmp_default;
+	return cmp_default((DB_val const *)a, (DB_val const *)b);
 }
 static int ldb_cursor_current(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val) {
 	if(!cursor) return DB_EINVAL;
@@ -384,7 +384,7 @@ DB_FN int db__env_config(DB_env *const env, DB_cfg const type, void *data) {
 	if(!env) return DB_EINVAL;
 	switch(type) {
 	case DB_CFG_MAPSIZE: return 0;
-	case DB_CFG_COMPARE: *env->cmp = *(DB_cmp_data *)data; return 0;
+	case DB_CFG_COMPARE: return DB_ENOTSUP; //*env->cmp = *(DB_cmp_data *)data; return 0;
 	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
 	case DB_CFG_TXNSIZE: return DB_ENOTSUP;
 	default: return DB_ENOTSUP;
