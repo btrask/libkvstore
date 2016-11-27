@@ -61,6 +61,7 @@ Notable differences from LMDB's API:
 Known Issues
 ------------
 
+- Custom comparators are currently unsupported in any of the included back-ends due to limitations with LMDB (which is even used in the LevelDB back-end).
 - The RocksDB backend doesn't do very smart configuration (doesn't even enable bloom filters).
 - The LevelDB-based backends don't support nested transactions yet.
 - The lsmdb backend is more or less unsupported.
