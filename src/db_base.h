@@ -32,6 +32,7 @@
 #define DB_EBUSY (-EBUSY)
 #define DB_EINVAL (-EINVAL)
 #define DB_ENOSPC (-ENOSPC)
+#define DB_ENOTSUP (-ENOTSUP)
 
 // Equivalent to MDB_val.
 typedef struct {
@@ -43,13 +44,28 @@ typedef struct DB_env DB_env;
 typedef struct DB_txn DB_txn;
 typedef struct DB_cursor DB_cursor;
 
+typedef int (*DB_cmp_func)(void *ctx, DB_txn *const txn, DB_val const *const a, DB_val const *const b);
 typedef int (*DB_cmp_func_bad)(DB_val const *const a, DB_val const *const b);
+typedef struct {
+	DB_cmp_func_bad fn; // TODO
+	void *ctx;
+} DB_cmp_data;
+
 typedef int (*DB_cmd_func)(void *ctx, DB_txn *const txn, unsigned char const *const buf, size_t const len);
+typedef struct {
+	DB_cmd_func fn;
+	void *ctx;
+} DB_cmd_data;
+
+typedef enum {
+	DB_CFG_MAPSIZE = 1, // Pointer to size_t
+	DB_CFG_COMPARE = 2, // Pointer to DB_cmp_data
+	DB_CFG_COMMAND = 3, // Pointer to DB_cmd_data
+	DB_CFG_TXNSIZE = 4, // size_t
+} DB_cfg;
 
 int db_env_create(DB_env **const out);
-int db_env_set_mapsize(DB_env *const env, size_t const size);
-int db_env_set_compare_bad(DB_env *const env, DB_cmp_func_bad const fn); // Doesn't support context pointer due to limitation of MDB API.
-int db_env_set_command(DB_env *const env, DB_cmd_func const fn, void *ctx);
+int db_env_config(DB_env *const env, DB_cfg const type, void *data);
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
 void db_env_close(DB_env *const env);
 

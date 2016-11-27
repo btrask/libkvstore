@@ -46,9 +46,8 @@ struct DB_env {
 	leveldb_t *db;
 	MDB_env *tmpenv;
 	leveldb_writeoptions_t *wopts;
-	DB_cmp_func_bad cmpfn_bad;
-	DB_cmd_func cmdfn;
-	void *cmdctx;
+	DB_cmp_data cmp[1];
+	DB_cmd_data cmd[1];
 };
 struct DB_txn {
 	DB_base const *isa;
@@ -92,7 +91,7 @@ static int cmp_default(DB_val const *const a, DB_val const *const b) {
 }
 static int cmp_internal(DB_env *const env, DB_val const *const a, DB_val const *const b) {
 	assert(env);
-	DB_cmp_func_bad cmp = env->cmpfn_bad;
+	DB_cmp_func_bad cmp = env->cmp->fn;
 	if(!cmp) cmp = cmp_default;
 	return cmp(a, b);
 }
@@ -157,14 +156,14 @@ static void storage_free(struct storage *const head) {
 
 struct LDB_cursor {
 	leveldb_iterator_t *iter;
-	DB_cmp_func_bad cmpfn_bad;
+	DB_cmp_data cmp[1];
 	bool valid;
 	bool storage_current;
 	struct storage *keys;
 	struct storage *vals;
 };
 static void ldb_cursor_close(LDB_cursor *const cursor);
-static int ldb_cursor_open(leveldb_t *const db, leveldb_readoptions_t *const ropts, DB_cmp_func_bad const cmp, LDB_cursor **const out) {
+static int ldb_cursor_open(leveldb_t *const db, leveldb_readoptions_t *const ropts, DB_cmp_data const *const cmp, LDB_cursor **const out) {
 	if(!db) return DB_EINVAL;
 	if(!ropts) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
@@ -177,7 +176,7 @@ static int ldb_cursor_open(leveldb_t *const db, leveldb_readoptions_t *const rop
 	if(!cursor->iter) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
 
-	cursor->cmpfn_bad = cmp;
+	*cursor->cmp = *cmp;
 	cursor->valid = false;
 
 	cursor->storage_current = false;
@@ -198,7 +197,8 @@ static void ldb_cursor_storage_invalidate(LDB_cursor *const cursor) {
 static void ldb_cursor_close(LDB_cursor *const cursor) {
 	if(!cursor) return;
 	leveldb_iter_destroy(cursor->iter); cursor->iter = NULL;
-	cursor->cmpfn_bad = NULL;
+	cursor->cmp->fn = NULL;
+	cursor->cmp->ctx = NULL;
 	cursor->valid = false;
 	ldb_cursor_storage_invalidate(cursor);
 	assert_zeroed(cursor, 1);
@@ -210,21 +210,21 @@ static int ldb_cursor_clear(LDB_cursor *const cursor) {
 	ldb_cursor_storage_invalidate(cursor);
 	return 0;
 }
-static int ldb_cursor_renew(leveldb_t *const db, leveldb_readoptions_t *const ropts, DB_cmp_func_bad const cmp, LDB_cursor **const out) {
+static int ldb_cursor_renew(leveldb_t *const db, leveldb_readoptions_t *const ropts, DB_cmp_data const *const cmp, LDB_cursor **const out) {
 	if(!out) return DB_EINVAL;
 	if(!*out) return ldb_cursor_open(db, ropts, cmp, out);
 	LDB_cursor *const cursor = *out;
 	leveldb_iter_destroy(cursor->iter); cursor->iter = NULL;
 	cursor->iter = leveldb_create_iterator(db, ropts);
 	if(!cursor->iter) return DB_ENOMEM;
-	cursor->cmpfn_bad = cmp;
+	*cursor->cmp = *cmp;
 	cursor->valid = false;
 	ldb_cursor_storage_invalidate(cursor);
 	return 0;
 }
 static int ldb_cursor_cmp(LDB_cursor *const cursor, MDB_val const *const a, MDB_val const *const b) {
 	assert(cursor);
-	DB_cmp_func_bad cmp = cursor->cmpfn_bad;
+	DB_cmp_func_bad cmp = cursor->cmp->fn;
 	if(!cmp) cmp = cmp_default;
 	return cmp((DB_val const *)a, (DB_val const *)b);
 }
@@ -361,7 +361,8 @@ DB_FN int db__env_create(DB_env **const out) {
 		return DB_ENOMEM;
 	}
 	leveldb_options_set_comparator(env->opts, env->comparator);
-	env->cmpfn_bad = NULL;
+	env->cmp->fn = NULL;
+	env->cmp->ctx = NULL;
 
 	int rc = mdberr(mdb_env_create(&env->tmpenv));
 	if(rc < 0) {
@@ -379,19 +380,15 @@ DB_FN int db__env_create(DB_env **const out) {
 	*out = env;
 	return 0;
 }
-DB_FN int db__env_set_mapsize(DB_env *const env, size_t const size) {
-	return 0;
-}
-DB_FN int db__env_set_compare_bad(DB_env *const env, DB_cmp_func_bad const fn) {
+DB_FN int db__env_config(DB_env *const env, DB_cfg const type, void *data) {
 	if(!env) return DB_EINVAL;
-	env->cmpfn_bad = fn;
-	return 0;
-}
-DB_FN int db__env_set_command(DB_env *const env, DB_cmd_func const fn, void *ctx) {
-	if(!env) return DB_EINVAL;
-	env->cmdfn = fn;
-	env->cmdctx = ctx;
-	return 0;
+	switch(type) {
+	case DB_CFG_MAPSIZE: return 0;
+	case DB_CFG_COMPARE: *env->cmp = *(DB_cmp_data *)data; return 0;
+	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
+	case DB_CFG_TXNSIZE: return DB_ENOTSUP;
+	default: return DB_ENOTSUP;
+	}
 }
 DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
 	if(!env) return DB_EINVAL;
@@ -422,7 +419,7 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 		mdb_txn_abort(tmptxn);
 		return DB_PANIC;
 	}
-	MDB_cmp_func *cmp = (MDB_cmp_func *)env->cmpfn_bad;
+	MDB_cmp_func *cmp = (MDB_cmp_func *)env->cmp->fn;
 	if(!cmp) cmp = (MDB_cmp_func *)cmp_default;
 	rc = mdberr(mdb_set_compare(tmptxn, dbi, cmp));
 	if(rc < 0) {
@@ -455,9 +452,10 @@ DB_FN void db__env_close(DB_env *const env) {
 		leveldb_writeoptions_destroy(env->wopts); env->wopts = NULL;
 	}
 	env->isa = NULL;
-	env->cmpfn_bad = NULL;
-	env->cmdfn = NULL;
-	env->cmdctx = NULL;
+	env->cmp->fn = NULL;
+	env->cmp->ctx = NULL;
+	env->cmd->fn = NULL;
+	env->cmd->ctx = NULL;
 	assert_zeroed(env, 1);
 	free(env);
 }
@@ -632,8 +630,8 @@ DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn) return DB_EINVAL;
-	if(!txn->env->cmdfn) return DB_EINVAL;
-	return txn->env->cmdfn(txn->env->cmdctx, txn, buf, len);
+	if(!txn->env->cmd->fn) return DB_EINVAL;
+	return txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len);
 }
 
 DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
@@ -672,7 +670,7 @@ DB_FN int db__cursor_renew(DB_txn *const txn, DB_cursor **const out) {
 	DB_cursor *const cursor = *out;
 	cursor->txn = txn;
 	cursor->state = S_INVALID;
-	int rc = ldb_cursor_renew(txn->env->db, txn->ropts, txn->env->cmpfn_bad, &cursor->persist);
+	int rc = ldb_cursor_renew(txn->env->db, txn->ropts, txn->env->cmp, &cursor->persist);
 	if(rc < 0) return rc;
 	return 0;
 }

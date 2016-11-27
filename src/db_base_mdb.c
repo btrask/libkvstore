@@ -13,9 +13,8 @@
 struct DB_env {
 	DB_base const *isa;
 	MDB_env *env;
-	DB_cmp_func_bad cmpfn_bad;
-	DB_cmd_func cmdfn;
-	void *cmdctx;
+	DB_cmp_data cmp[1];
+	DB_cmd_data cmd[1];
 };
 struct DB_txn {
 	DB_base const *isa;
@@ -47,20 +46,17 @@ DB_FN int db__env_create(DB_env **const out) {
 	*out = env;
 	return 0;
 }
-DB_FN int db__env_set_mapsize(DB_env *const env, size_t const size) {
+DB_FN int db__env_config(DB_env *const env, DB_cfg const type, void *data) {
 	if(!env) return DB_EINVAL;
-	return mdberr(mdb_env_set_mapsize(env->env, size));
-}
-DB_FN int db__env_set_compare_bad(DB_env *const env, DB_cmp_func_bad const fn) {
-	if(!env) return DB_EINVAL;
-	env->cmpfn_bad = fn;
-	return 0;
-}
-DB_FN int db__env_set_command(DB_env *const env, DB_cmd_func const fn, void *ctx) {
-	if(!env) return DB_EINVAL;
-	env->cmdfn = fn;
-	env->cmdctx = ctx;
-	return 0;
+	switch(type) {
+	case DB_CFG_MAPSIZE: {
+		size_t *const sp = data;
+		return mdberr(mdb_env_set_mapsize(env->env, *sp));
+	} case DB_CFG_COMPARE: *env->cmp = *(DB_cmp_data *)data; return 0;
+	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
+	case DB_CFG_TXNSIZE: return 0;
+	default: return DB_ENOTSUP;
+	}
 }
 DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
 	if(!env) return DB_EINVAL;
@@ -72,8 +68,8 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 	if(rc < 0) goto cleanup;
 	rc = mdberr(mdb_dbi_open(txn, NULL, 0, &dbi));
 	if(rc < 0) goto cleanup;
-	if(env->cmpfn_bad) {
-		rc = mdberr(mdb_set_compare(txn, dbi, (MDB_cmp_func *)env->cmpfn_bad));
+	if(env->cmp->fn) {
+		rc = mdberr(mdb_set_compare(txn, dbi, (MDB_cmp_func *)env->cmp->fn));
 		if(rc < 0) goto cleanup;
 	}
 	rc = mdberr(mdb_txn_commit(txn)); txn = NULL;
@@ -88,9 +84,10 @@ DB_FN void db__env_close(DB_env *const env) {
 	mdb_env_close(env->env);
 	env->isa = NULL;
 	env->env = NULL;
-	env->cmpfn_bad = NULL;
-	env->cmdfn = NULL;
-	env->cmdctx = NULL;
+	env->cmp->fn = NULL;
+	env->cmp->ctx = NULL;
+	env->cmd->fn = NULL;
+	env->cmd->ctx = NULL;
 	free(env);
 }
 
@@ -187,8 +184,8 @@ DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn) return DB_EINVAL;
-	if(!txn->env->cmdfn) return DB_EINVAL;
-	return txn->env->cmdfn(txn->env->cmdctx, txn, buf, len);
+	if(!txn->env->cmd->fn) return DB_EINVAL;
+	return txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len);
 }
 
 DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
