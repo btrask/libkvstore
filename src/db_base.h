@@ -58,10 +58,10 @@ typedef struct {
 } DB_cmd_data;
 
 typedef enum {
-	DB_CFG_MAPSIZE = 1, // Pointer to size_t
-	DB_CFG_COMPARE = 2, // Pointer to DB_cmp_data
-	DB_CFG_COMMAND = 3, // Pointer to DB_cmd_data
-	DB_CFG_TXNSIZE = 4, // size_t
+	DB_CFG_MAPSIZE = 1, // size_t const *const data
+	DB_CFG_COMPARE = 2, // DB_cmp_data const *const data
+	DB_CFG_COMMAND = 3, // DB_cmd_data const *const data
+	DB_CFG_TXNSIZE = 4, // size_t const *const data
 } DB_cfg;
 
 int db_env_create(DB_env **const out);
