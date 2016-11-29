@@ -26,6 +26,7 @@ struct DB_txn {
 };
 struct DB_cursor {
 	DB_base const *isa;
+	DB_txn *txn;
 	MDB_cursor *cursor;
 };
 
@@ -145,6 +146,11 @@ DB_FN int db__txn_renew(DB_txn *const txn) {
 	}
 	return 0;
 }
+DB_FN int db__txn_env(DB_txn *const txn, DB_env **const out) {
+	if(!txn) return DB_EINVAL;
+	if(out) *out = txn->env;
+	return 0;
+}
 DB_FN int db__txn_parent(DB_txn *const txn, DB_txn **const out) {
 	if(!txn) return DB_EINVAL;
 	if(out) *out = txn->parent;
@@ -207,6 +213,7 @@ DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 		return DB_ENOMEM;
 	}
 	cursor->isa = db_base_mdb;
+	cursor->txn = txn;
 	cursor->cursor = c;
 	*out = cursor;
 	return 0;
@@ -215,6 +222,7 @@ DB_FN void db__cursor_close(DB_cursor *const cursor) {
 	if(!cursor) return;
 	mdb_cursor_close(cursor->cursor);
 	cursor->isa = NULL;
+	cursor->txn = NULL;
 	free(cursor);
 }
 DB_FN void db__cursor_reset(DB_cursor *const cursor) {
@@ -223,13 +231,21 @@ DB_FN void db__cursor_reset(DB_cursor *const cursor) {
 DB_FN int db__cursor_renew(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
-	if(*out) return mdberr(mdb_cursor_renew(txn->txn, out[0]->cursor));
+	if(*out) {
+		out[0]->txn = txn;
+		return mdberr(mdb_cursor_renew(txn->txn, out[0]->cursor));
+	}
 	return db_cursor_open(txn, out);
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
 	MDB_cursor *const c = cursor->cursor;
 	return mdberr(mdb_cursor_renew(mdb_cursor_txn(c), c));
+}
+DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
+	if(!cursor) return DB_EINVAL;
+	if(out) *out = cursor->txn;
+	return 0;
 }
 DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor);

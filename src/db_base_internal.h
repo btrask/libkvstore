@@ -22,6 +22,7 @@ DB_base const db_base_##name[1] = {{ \
 	.txn_abort = db__txn_abort, \
 	.txn_reset = db__txn_reset, \
 	.txn_renew = db__txn_renew, \
+	.txn_env = db__txn_env, \
 	.txn_parent = db__txn_parent, \
 	.txn_get_flags = db__txn_get_flags, \
 	.txn_cmp = db__txn_cmp, \
@@ -37,6 +38,7 @@ DB_base const db_base_##name[1] = {{ \
 	.cursor_reset = db__cursor_reset, \
 	.cursor_renew = db__cursor_renew, \
 	.cursor_clear = db__cursor_clear, \
+	.cursor_txn = db__cursor_txn, \
 	.cursor_cmp = db__cursor_cmp, \
 	\
 	.cursor_current = db__cursor_current, \
@@ -62,6 +64,7 @@ typedef struct {
 	void (*txn_abort)(DB_txn *const txn);
 	void (*txn_reset)(DB_txn *const txn);
 	int (*txn_renew)(DB_txn *const txn);
+	int (*txn_env)(DB_txn *const txn, DB_env **const out);
 	int (*txn_parent)(DB_txn *const txn, DB_txn **const out);
 	int (*txn_get_flags)(DB_txn *const txn, unsigned *const flags);
 	int (*txn_cmp)(DB_txn *const txn, DB_val const *const a, DB_val const *const b);
@@ -77,6 +80,7 @@ typedef struct {
 	void (*cursor_reset)(DB_cursor *const cursor);
 	int (*cursor_renew)(DB_txn *const txn, DB_cursor **const out);
 	int (*cursor_clear)(DB_cursor *const cursor);
+	int (*cursor_txn)(DB_cursor *const cursor, DB_txn **const out);
 	int (*cursor_cmp)(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b);
 
 	int (*cursor_current)(DB_cursor *const cursor, DB_val *const key, DB_val *const data);

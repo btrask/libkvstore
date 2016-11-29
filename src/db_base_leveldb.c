@@ -586,6 +586,11 @@ DB_FN int db__txn_renew(DB_txn *const txn) {
 	leveldb_readoptions_set_snapshot(txn->ropts, txn->snapshot);
 	return 0;
 }
+DB_FN int db__txn_env(DB_txn *const txn, DB_env **const out) {
+	if(!txn) return DB_EINVAL;
+	if(out) *out = txn->env;
+	return 0;
+}
 DB_FN int db__txn_parent(DB_txn *const txn, DB_txn **const out) {
 	if(!txn) return DB_EINVAL;
 	if(out) *out = txn->parent;
@@ -645,6 +650,7 @@ DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	DB_cursor *cursor = calloc(1, sizeof(struct DB_cursor));
 	if(!cursor) return DB_ENOMEM;
 	cursor->isa = db_base_leveldb;
+	cursor->txn = txn;
 	if(txn->tmptxn) {
 		int rc = mdberr(mdb_cursor_open(txn->tmptxn, MDB_MAIN_DBI, &cursor->pending));
 		if(rc < 0) {
@@ -687,6 +693,11 @@ DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 		cursor->state = S_INVALID;
 		return 0;
 	}
+}
+DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
+	if(!cursor) return DB_EINVAL;
+	if(out) *out = cursor->txn;
+	return 0;
 }
 DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor); // We can't report an error from this function.

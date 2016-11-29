@@ -53,6 +53,10 @@ int db_txn_renew(DB_txn *const txn) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->txn_renew(txn);
 }
+int db_txn_env(DB_txn *const txn, DB_env **const out) {
+	if(!txn) return DB_EINVAL;
+	return txn->isa->txn_env(txn, out);
+}
 int db_txn_parent(DB_txn *const txn, DB_txn **const out) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->txn_parent(txn, out);
@@ -106,6 +110,10 @@ int db_cursor_renew(DB_txn *const txn, DB_cursor **const out) {
 int db_cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
 	return cursor->isa->cursor_clear(cursor);
+}
+int db_cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
+	if(!cursor) return DB_EINVAL;
+	return cursor->isa->cursor_txn(cursor, out);
 }
 int db_cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor); // Can't return errors.
