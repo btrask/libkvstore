@@ -39,6 +39,7 @@
 //#define DB_BAD_DBI (-30780)
 #define DB_LAST_ERRCODE DB_BAD_DBI
 
+// Unlike MDB, these error codes are negative too.
 #define DB_ENOENT (-ENOENT)
 #define DB_EIO (-EIO)
 #define DB_ENOMEM (-ENOMEM)
