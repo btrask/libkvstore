@@ -22,6 +22,7 @@ DB_base const db_base_##name[1] = {{ \
 	.txn_abort = db__txn_abort, \
 	.txn_reset = db__txn_reset, \
 	.txn_renew = db__txn_renew, \
+	.txn_parent = db__txn_parent, \
 	.txn_get_flags = db__txn_get_flags, \
 	.txn_cmp = db__txn_cmp, \
 	.txn_cursor = db__txn_cursor, \
@@ -61,6 +62,7 @@ typedef struct {
 	void (*txn_abort)(DB_txn *const txn);
 	void (*txn_reset)(DB_txn *const txn);
 	int (*txn_renew)(DB_txn *const txn);
+	int (*txn_parent)(DB_txn *const txn, DB_txn **const out);
 	int (*txn_get_flags)(DB_txn *const txn, unsigned *const flags);
 	int (*txn_cmp)(DB_txn *const txn, DB_val const *const a, DB_val const *const b);
 	int (*txn_cursor)(DB_txn *const txn, DB_cursor **const out);

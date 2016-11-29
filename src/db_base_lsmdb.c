@@ -14,6 +14,7 @@ struct DB_env {
 struct DB_txn {
 	DB_base const *isa;
 	DB_env *env;
+	DB_txn *parent;
 	LSMDB_txn *txn;
 	DB_cursor *cursor;
 };
@@ -77,6 +78,7 @@ DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const 
 	}
 	txn->isa = db_base_lsmdb;
 	txn->env = env;
+	txn->parent = parent;
 	txn->txn = t;
 	*out = txn;
 	return 0;
@@ -92,6 +94,7 @@ DB_FN int db__txn_commit(DB_txn *const txn) {
 	rc = mdberr(lsmdb_txn_commit(txn->txn));
 	txn->isa = NULL;
 	txn->env = NULL;
+	txn->parent = NULL;
 	txn->txn = NULL;
 	free(txn);
 	return rc;
@@ -102,6 +105,7 @@ DB_FN void db__txn_abort(DB_txn *const txn) {
 	lsmdb_txn_abort(txn->txn);
 	txn->isa = NULL;
 	txn->env = NULL;
+	txn->parent = NULL;
 	txn->txn = NULL;
 	free(txn);
 }
@@ -112,6 +116,11 @@ DB_FN void db__txn_reset(DB_txn *const txn) {
 DB_FN int db__txn_renew(DB_txn *const txn) {
 	if(!txn) return DB_EINVAL;
 	return mdberr(lsmdb_txn_renew(txn->txn));
+}
+DB_FN int db__txn_parent(DB_txn *const txn, DB_txn **const out) {
+	if(!txn) return DB_EINVAL;
+	if(out) *out = txn->parent;
+	return 0;
 }
 DB_FN int db__txn_get_flags(DB_txn *const txn, unsigned *const flags) {
 	if(!txn) return DB_EINVAL;

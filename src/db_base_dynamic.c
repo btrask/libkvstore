@@ -53,6 +53,10 @@ int db_txn_renew(DB_txn *const txn) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->txn_renew(txn);
 }
+int db_txn_parent(DB_txn *const txn, DB_txn **const out) {
+	if(!txn) return DB_EINVAL;
+	return txn->isa->txn_parent(txn, out);
+}
 int db_txn_get_flags(DB_txn *const txn, unsigned *const flags) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->txn_get_flags(txn, flags);

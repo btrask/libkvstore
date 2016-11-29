@@ -586,6 +586,11 @@ DB_FN int db__txn_renew(DB_txn *const txn) {
 	leveldb_readoptions_set_snapshot(txn->ropts, txn->snapshot);
 	return 0;
 }
+DB_FN int db__txn_parent(DB_txn *const txn, DB_txn **const out) {
+	if(!txn) return DB_EINVAL;
+	if(out) *out = txn->parent;
+	return 0;
+}
 DB_FN int db__txn_get_flags(DB_txn *const txn, unsigned *const flags) {
 	if(!txn) return DB_EINVAL;
 	if(flags) *flags = txn->flags;
