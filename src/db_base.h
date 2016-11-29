@@ -19,10 +19,24 @@
 
 #define DB_KEYEXIST (-30799)
 #define DB_NOTFOUND (-30798)
-#define DB_PANIC (-30795)
+//#define DB_PAGE_NOTFOUND (-30797)
+#define DB_CORRUPTED (-30796)
+#define DB_PANIC (-30795) // Fatal error
 #define DB_VERSION_MISMATCH (-30794)
+#define DB_INVALID (-30793) // Invalid file type
+#define DB_MAP_FULL (-30792)
+//#define DB_DBS_FULL (-30791)
+#define DB_READERS_FULL (-30790)
+//#define DB_TLS_FULL (-30789)
+#define DB_TXN_FULL (-30788)
+//#define DB_CURSOR_FULL (-30787)
+//#define DB_PAGE_FULL (-30786)
+//#define DB_MAP_RESIZED (-30785)
+//#define DB_INCOMPATIBLE (-30784)
+//#define DB_BAD_RSLOT (-30783)
+#define DB_BAD_TXN (-30782)
 #define DB_BAD_VALSIZE (-30781)
-#define DB_BAD_DBI (-30780)
+//#define DB_BAD_DBI (-30780)
 #define DB_LAST_ERRCODE DB_BAD_DBI
 
 #define DB_ENOENT (-ENOENT)
@@ -135,10 +149,15 @@ static char const *db_strerror(int const rc) {
 	switch(rc) {
 	case DB_KEYEXIST: return "Database item already exists";
 	case DB_NOTFOUND: return "Database item not found";
+	case DB_CORRUPTED: return "Database file corrupted";
 	case DB_PANIC: return "Database panic";
 	case DB_VERSION_MISMATCH: return "Database version mismatch";
+	case DB_INVALID: return "Invalid database file type";
+	case DB_MAP_FULL: return "Database map full";
+	case DB_READERS_FULL: return "Too many database readers";
+	case DB_TXN_FULL: return "Database transaction full";
+	case DB_BAD_TXN: return "Invalid database transaction";
 	case DB_BAD_VALSIZE: return "Database bad value size";
-	case DB_BAD_DBI: return "Database bad DBI";
 
 	case DB_ENOENT: return "No entity";
 	case DB_EIO: return "IO";
