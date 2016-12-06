@@ -18,7 +18,9 @@ struct DB_cursor {
 };
 
 int db_env_create_base(char const *const basename, DB_env **const out) {
+	if(!basename) return db_env_create(out);
 	DB_base const *base = NULL;
+	if(0 == strcmp(basename, "default")) base = db_base_default;
 	if(0 == strcmp(basename, "mdb")) base = db_base_mdb;
 	if(0 == strcmp(basename, "leveldb")) base = db_base_leveldb;
 //	if(0 == strcmp(basename, "rocksdb")) base = db_base_rocksdb;
