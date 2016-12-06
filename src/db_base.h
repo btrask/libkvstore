@@ -12,11 +12,17 @@
 // More may be exposed here in the future.
 #define DB_NOSYNC 0x10000
 
+// db_txn_begin flags
 #define DB_RDWR 0
 #define DB_RDONLY 0x20000
 
+// db_cursor_put flags
 #define DB_NOOVERWRITE 0x10 // May be expensive for LSM-tree back-ends.
+#define DB_CURRENT 0x40 // Overwrite data of current key.
+#define DB_RESERVE 0x10000 // Return pointer to writable data.
+#define DB_APPEND 0x20000
 
+// Errors
 #define DB_KEYEXIST (-30799)
 #define DB_NOTFOUND (-30798)
 //#define DB_PAGE_NOTFOUND (-30797)

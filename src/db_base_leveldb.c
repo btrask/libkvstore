@@ -766,28 +766,37 @@ DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *con
 	if(!cursor) return DB_EINVAL;
 	if(!key) return DB_EINVAL;
 	if(DB_RDONLY & cursor->txn->flags) return DB_EACCES;
-	ldb_cursor_storage_invalidate(cursor->persist);
 	DB_val k[1], d[1];
 	int rc = 0;
-	if(DB_NOOVERWRITE & flags) {
+	// DB_APPEND is mostly just an optimization, so we currently
+	// don't bother checking it.
+	if(DB_CURRENT & flags) {
+		rc = db_cursor_current(cursor, k, NULL);
+		if(rc < 0) return rc;
+	} else {
+		ldb_cursor_storage_invalidate(cursor->persist);
 		*k = *key;
+	}
+	if(DB_NOOVERWRITE & flags) {
 		rc = db_cursor_seek(cursor, k, d, 0);
 		if(rc >= 0) {
-			*key = *k;
 			if(data) *data = *d;
 			return DB_KEYEXIST;
 		}
 		if(DB_NOTFOUND != rc) return rc;
 	}
-	cursor->state = S_INVALID;
-	*k = *key;
+	cursor->state = S_PENDING;
 	*d = (DB_val){ 1+(data ? data->size : 0), NULL }; // Prefix with deletion flag.
 	assert(cursor->pending);
-	rc = db_cursor_put(cursor->pending, k, d, MDB_RESERVE); // TODO: HACK
+	rc = db_cursor_put(cursor->pending, k, d, DB_RESERVE);
 	if(rc < 0) return rc;
 	assert(d->data);
 	memset(d->data+0, KEY_PRESENT, 1);
-	if(data && data->size > 0) memcpy(d->data+1, data->data, data->size);
+	if(DB_RESERVE & flags) {
+		if(data) *data = (DB_val){ d->size-1, (char *)d->data+1 };
+	} else {
+		if(data && data->size > 0) memcpy(d->data+1, data->data, data->size);
+	}
 	return 0;
 }
 DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
