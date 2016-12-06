@@ -34,7 +34,7 @@ int db_env_create(DB_env **const out) {
 	if(!db_base_default) return DB_PANIC;
 	return db_base_default->env_create(out);
 }
-int db_env_config(DB_env *const env, DB_cfg const type, void *data) {
+int db_env_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
 	return env->isa->env_config(env, type, data);
 }

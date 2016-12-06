@@ -77,17 +77,15 @@ typedef struct {
 	void *ctx;
 } DB_cmd_data;
 
-typedef enum {
-	DB_CFG_MAPSIZE = 1, // size_t const *const data
-	DB_CFG_COMPARE = 2, // DB_cmp_data const *const data
-	DB_CFG_COMMAND = 3, // DB_cmd_data const *const data
-	DB_CFG_TXNSIZE = 4, // size_t const *const data
-} DB_cfg;
+#define DB_CFG_MAPSIZE 1 // size_t const *const data
+#define DB_CFG_COMPARE 2 // DB_cmp_data const *const data
+#define DB_CFG_COMMAND 3 // DB_cmd_data const *const data
+#define DB_CFG_TXNSIZE 4 // size_t const *const data
 
 int db_env_create_base(char const *const basename, DB_env **const out);
 
 int db_env_create(DB_env **const out);
-int db_env_config(DB_env *const env, DB_cfg const type, void *data);
+int db_env_config(DB_env *const env, unsigned const type, void *data);
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
 void db_env_close(DB_env *const env);
 

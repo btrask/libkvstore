@@ -55,7 +55,7 @@ typedef struct {
 
 	// V0 methods
 	int (*env_create)(DB_env **const out);
-	int (*env_config)(DB_env *const env, DB_cfg const type, void *data);
+	int (*env_config)(DB_env *const env, unsigned const type, void *data);
 	int (*env_open)(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
 	void (*env_close)(DB_env *const env);
 

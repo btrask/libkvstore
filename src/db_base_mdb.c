@@ -48,7 +48,7 @@ DB_FN int db__env_create(DB_env **const out) {
 	*out = env;
 	return 0;
 }
-DB_FN int db__env_config(DB_env *const env, DB_cfg const type, void *data) {
+DB_FN int db__env_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
 	switch(type) {
 	case DB_CFG_MAPSIZE: {
