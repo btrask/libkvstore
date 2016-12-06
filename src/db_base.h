@@ -78,6 +78,8 @@ typedef enum {
 	DB_CFG_TXNSIZE = 4, // size_t const *const data
 } DB_cfg;
 
+int db_env_create_base(char const *const basename, DB_env **const out);
+
 int db_env_create(DB_env **const out);
 int db_env_config(DB_env *const env, DB_cfg const type, void *data);
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);

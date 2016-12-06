@@ -20,10 +20,6 @@
 #include "db_base_internal.h"
 #include "common.h"
 
-#define MDB_RDWR 0
-
-#define MDB_MAIN_DBI 1
-
 typedef enum {
 	S_INVALID = 0,
 	S_EQUAL,
@@ -44,7 +40,7 @@ struct DB_env {
 	leveldb_filterpolicy_t *filterpolicy;
 	leveldb_comparator_t *comparator;
 	leveldb_t *db;
-	MDB_env *tmpenv;
+	DB_env *tmpenv;
 	leveldb_writeoptions_t *wopts;
 	DB_cmp_data cmp[1];
 	DB_cmd_data cmd[1];
@@ -56,25 +52,25 @@ struct DB_txn {
 	unsigned flags;
 	leveldb_readoptions_t *ropts;
 	leveldb_snapshot_t const *snapshot;
-	MDB_txn *tmptxn;
+	DB_txn *tmptxn;
 	DB_cursor *cursor;
 };
 struct DB_cursor {
 	DB_base const *isa;
 	DB_txn *txn;
 	DB_state state;
-	MDB_cursor *pending;
+	DB_cursor *pending;
 	LDB_cursor *persist;
 };
 
 
 // DEBUG
-static char *tohex(MDB_val const *const x) {
+static char *tohex(DB_val const *const x) {
 	char const *const map = "0123456789abcdef";
-	char const *const buf = x->mv_data;
-	char *const hex = calloc(x->mv_size*2+1, 1);
+	char const *const buf = x->data;
+	char *const hex = calloc(x->size*2+1, 1);
 	if(!hex) return NULL;
-	for(size_t i = 0; i < x->mv_size; ++i) {
+	for(size_t i = 0; i < x->size; ++i) {
 		hex[i*2+0] = map[0xf & (buf[i] >> 4)];
 		hex[i*2+1] = map[0xf & (buf[i] >> 0)];
 	}
@@ -109,34 +105,16 @@ static void cmp_destructor(void *ctx) {
 }
 
 
-static int mdberr(int const rc) {
-	return rc <= 0 ? rc : -rc;
-}
-static int mdb_cursor_seek(MDB_cursor *const cursor, MDB_val *const key, MDB_val *const data, int const dir) {
-	if(!key) return EINVAL;
-	MDB_val const orig[1] = { *key };
-	MDB_cursor_op const op = 0 == dir ? MDB_SET : MDB_SET_RANGE;
-	int rc = mdberr(mdb_cursor_get(cursor, key, data, op));
-	if(dir >= 0) return rc;
-	if(rc >= 0) {
-		MDB_txn *const txn = mdb_cursor_txn(cursor);
-		MDB_dbi const dbi = mdb_cursor_dbi(cursor);
-		if(0 == mdb_cmp(txn, dbi, orig, key)) return rc;
-		return mdberr(mdb_cursor_get(cursor, key, data, MDB_PREV));
-	} else if(DB_NOTFOUND == rc) {
-		return mdberr(mdb_cursor_get(cursor, key, data, MDB_LAST));
-	} else return rc;
-}
-static char tombstone_get(MDB_val const *const data) {
+static char tombstone_get(DB_val const *const data) {
 	assert(data);
-	assert(data->mv_size >= 1);
-	return ((char const *)data->mv_data)[0];
+	assert(data->size >= 1);
+	return ((char const *)data->data)[0];
 }
-static void tombstone_trim(MDB_val *const data) {
+static void tombstone_trim(DB_val *const data) {
 	if(!data) return;
 	assert(KEY_PRESENT == tombstone_get(data));
-	data->mv_data++;
-	data->mv_size--;
+	data->data++;
+	data->size--;
 }
 
 
@@ -222,13 +200,13 @@ static int ldb_cursor_renew(leveldb_t *const db, leveldb_readoptions_t *const ro
 	ldb_cursor_storage_invalidate(cursor);
 	return 0;
 }
-static int ldb_cursor_cmp(LDB_cursor *const cursor, MDB_val const *const a, MDB_val const *const b) {
+static int ldb_cursor_cmp(LDB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor);
 //	DB_cmp_func_bad cmp = cursor->cmp->fn;
 //	if(!cmp) cmp = cmp_default;
 	return cmp_default((DB_val const *)a, (DB_val const *)b);
 }
-static int ldb_cursor_current(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val) {
+static int ldb_cursor_current(LDB_cursor *const cursor, DB_val *const key, DB_val *const val) {
 	if(!cursor) return DB_EINVAL;
 	if(!cursor->valid) return DB_NOTFOUND;
 	if(!key && !val) return 0;
@@ -271,15 +249,15 @@ static int ldb_cursor_current(LDB_cursor *const cursor, MDB_val *const key, MDB_
 	assert(cursor->storage_current);
 	assert(cursor->keys);
 	assert(cursor->vals);
-	if(key) *key = (MDB_val){ cursor->keys->size, cursor->keys->data };
-	if(val) *val = (MDB_val){ cursor->vals->size, cursor->vals->data };
+	if(key) *key = (DB_val){ cursor->keys->size, cursor->keys->data };
+	if(val) *val = (DB_val){ cursor->vals->size, cursor->vals->data };
 	return 0;
 }
-static int ldb_cursor_seek(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val, int const dir) {
+static int ldb_cursor_seek(LDB_cursor *const cursor, DB_val *const key, DB_val *const val, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(!key) return DB_EINVAL;
-	MDB_val const orig[1] = { *key };
-	leveldb_iter_seek(cursor->iter, key->mv_data, key->mv_size);
+	DB_val const orig[1] = { *key };
+	leveldb_iter_seek(cursor->iter, key->data, key->size);
 	cursor->valid = !!leveldb_iter_valid(cursor->iter);
 	cursor->storage_current = false;
 	int rc = ldb_cursor_current(cursor, key, val);
@@ -299,7 +277,7 @@ static int ldb_cursor_seek(LDB_cursor *const cursor, MDB_val *const key, MDB_val
 	cursor->valid = 0;
 	return DB_NOTFOUND;
 }
-static int ldb_cursor_first(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val, int const dir) {
+static int ldb_cursor_first(LDB_cursor *const cursor, DB_val *const key, DB_val *const val, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(0 == dir) return DB_EINVAL;
 	if(dir > 0) leveldb_iter_seek_to_first(cursor->iter);
@@ -308,7 +286,7 @@ static int ldb_cursor_first(LDB_cursor *const cursor, MDB_val *const key, MDB_va
 	cursor->storage_current = false;
 	return ldb_cursor_current(cursor, key, val);
 }
-static int ldb_cursor_next(LDB_cursor *const cursor, MDB_val *const key, MDB_val *const val, int const dir) {
+static int ldb_cursor_next(LDB_cursor *const cursor, DB_val *const key, DB_val *const val, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(!cursor->valid) return ldb_cursor_first(cursor, key, val, dir);
 	if(0 == dir) return DB_EINVAL;
@@ -364,7 +342,7 @@ DB_FN int db__env_create(DB_env **const out) {
 	env->cmp->fn = NULL;
 	env->cmp->ctx = NULL;
 
-	int rc = mdberr(mdb_env_create(&env->tmpenv));
+	int rc = db_env_create_base("mdb", &env->tmpenv);
 	if(rc < 0) {
 		db_env_close(env);
 		return rc;
@@ -398,37 +376,17 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 	leveldb_free(err);
 	if(!env->db || err) return -1; // TODO: Parse error string?
 
+	int rc = 0;
+	if(env->cmp->fn) { // TODO: Currently unsupported
+		rc = db_env_config(env->tmpenv, DB_CFG_COMPARE, &env->cmp);
+		if(rc < 0) return rc;
+	}
 
 	char tmppath[512]; // TODO
 	if(snprintf(tmppath, sizeof(tmppath), "%s/tmp.mdb", name) < 0) return -1;
-	int rc = mdberr(mdb_env_open(env->tmpenv, tmppath, MDB_NOSUBDIR | MDB_WRITEMAP, 0600));
+	rc = db_env_open(env->tmpenv, tmppath, MDB_WRITEMAP, 0600);
 	if(rc < 0) return rc;
 	(void)unlink(tmppath);
-
-	MDB_txn *tmptxn;
-	rc = mdberr(mdb_txn_begin(env->tmpenv, NULL, MDB_RDWR, &tmptxn));
-	if(rc < 0) return rc;
-	MDB_dbi dbi;
-	rc = mdberr(mdb_dbi_open(tmptxn, NULL, 0, &dbi));
-	if(rc < 0) {
-		mdb_txn_abort(tmptxn);
-		return rc;
-	}
-	if(MDB_MAIN_DBI != dbi) {
-		// Should never happen.
-		mdb_txn_abort(tmptxn);
-		return DB_PANIC;
-	}
-	MDB_cmp_func *cmp = (MDB_cmp_func *)env->cmp->fn;
-	if(!cmp) cmp = (MDB_cmp_func *)cmp_default;
-	rc = mdberr(mdb_set_compare(tmptxn, dbi, cmp));
-	if(rc < 0) {
-		mdb_txn_abort(tmptxn);
-		return rc;
-	}
-	rc = mdberr(mdb_txn_commit(tmptxn));
-	if(rc < 0) return rc;
-
 
 	leveldb_writeoptions_set_sync(env->wopts, !(DB_NOSYNC & flags));
 	return 0;
@@ -447,7 +405,7 @@ DB_FN void db__env_close(DB_env *const env) {
 	if(env->db) {
 		leveldb_close(env->db); env->db = NULL;
 	}
-	mdb_env_close(env->tmpenv); env->tmpenv = NULL;
+	db_env_close(env->tmpenv); env->tmpenv = NULL;
 	if(env->wopts) {
 		leveldb_writeoptions_destroy(env->wopts); env->wopts = NULL;
 	}
@@ -464,16 +422,16 @@ DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const 
 	if(!env) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
 
-	MDB_txn *tmptxn = NULL;
+	DB_txn *tmptxn = NULL;
 	if(!(DB_RDONLY & flags)) {
-		MDB_txn *p = parent ? parent->tmptxn : NULL;
-		int rc = mdberr(mdb_txn_begin(env->tmpenv, p, flags, &tmptxn));
+		DB_txn *p = parent ? parent->tmptxn : NULL;
+		int rc = db_txn_begin(env->tmpenv, p, flags, &tmptxn);
 		if(rc < 0) return rc;
 	}
 
 	DB_txn *txn = calloc(1, sizeof(struct DB_txn));
 	if(!txn) {
-		mdb_txn_abort(tmptxn);
+		db_txn_abort(tmptxn);
 		return DB_ENOMEM;
 	}
 	txn->isa = db_base_leveldb;
@@ -516,30 +474,30 @@ DB_FN int db__txn_commit(DB_txn *const txn) {
 		return DB_ENOMEM;
 	}
 	assert(txn->tmptxn);
-	MDB_cursor *cursor = NULL;
-	int rc = mdberr(mdb_cursor_open(txn->tmptxn, MDB_MAIN_DBI, &cursor));
+	DB_cursor *cursor = NULL;
+	int rc = db_txn_cursor(txn->tmptxn, &cursor);
 	if(rc < 0) {
 		db_txn_abort(txn);
 		return rc;
 	}
-	MDB_val key[1], data[1];
-	rc = mdberr(mdb_cursor_get(cursor, key, data, MDB_FIRST));
-	for(; rc >= 0; rc = mdberr(mdb_cursor_get(cursor, key, data, MDB_NEXT))) {
+	DB_val key[1], data[1];
+	rc = db_cursor_first(cursor, key, data, +1);
+	for(; rc >= 0; rc = db_cursor_next(cursor, key, data, +1)) {
 		switch(tombstone_get(data)) {
 		case KEY_TOMBSTONE:
 			leveldb_writebatch_delete(batch,
-				key->mv_data, key->mv_size);
+				key->data, key->size);
 			break;
 		case KEY_PRESENT:
 			tombstone_trim(data);
 			leveldb_writebatch_put(batch,
-				key->mv_data, key->mv_size,
-				data->mv_data, data->mv_size);
+				key->data, key->size,
+				data->data, data->size);
 			break;
 		default: assert(0);
 		}
 	}
-	mdb_cursor_close(cursor); cursor = NULL;
+	cursor = NULL;
 
 	char *err = NULL;
 	leveldb_write(txn->env->db, txn->env->wopts, batch, &err);
@@ -560,7 +518,7 @@ DB_FN void db__txn_abort(DB_txn *const txn) {
 	}
 	leveldb_readoptions_destroy(txn->ropts); txn->ropts = NULL;
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
-	mdb_txn_abort(txn->tmptxn); txn->tmptxn = NULL;
+	db_txn_abort(txn->tmptxn); txn->tmptxn = NULL;
 	txn->env = NULL;
 	txn->parent = NULL;
 	txn->flags = 0;
@@ -634,7 +592,7 @@ DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	char tombstone = KEY_TOMBSTONE;
 	DB_val k[1] = { *key };
 	DB_val d[1] = {{ sizeof(tombstone), &tombstone }};
-	int rc = mdberr(mdb_put(txn->tmptxn, MDB_MAIN_DBI, (MDB_val *)k, (MDB_val *)d, 0));
+	int rc = db_put(txn->tmptxn, k, d, 0);
 	if(rc < 0) return rc;
 	return 0;
 }
@@ -652,7 +610,7 @@ DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	cursor->isa = db_base_leveldb;
 	cursor->txn = txn;
 	if(txn->tmptxn) {
-		int rc = mdberr(mdb_cursor_open(txn->tmptxn, MDB_MAIN_DBI, &cursor->pending));
+		int rc = db_cursor_open(txn->tmptxn, &cursor->pending);
 		if(rc < 0) {
 			db_cursor_close(cursor);
 			return rc;
@@ -663,7 +621,7 @@ DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 }
 DB_FN void db__cursor_close(DB_cursor *const cursor) {
 	if(!cursor) return;
-	mdb_cursor_close(cursor->pending); cursor->pending = NULL;
+	db_cursor_close(cursor->pending); cursor->pending = NULL;
 	db_cursor_reset(cursor);
 	cursor->isa = NULL;
 	assert_zeroed(cursor, 1);
@@ -705,10 +663,10 @@ DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val 
 }
 
 
-static int db_cursor_update(DB_cursor *const cursor, int rc1, MDB_val *const k1, MDB_val *const d1, int const rc2, MDB_val const *const k2, MDB_val const *const d2, int const dir, DB_val *const key, DB_val *const data) {
+static int db_cursor_update(DB_cursor *const cursor, int rc1, DB_val *const k1, DB_val *const d1, int const rc2, DB_val const *const k2, DB_val const *const d2, int const dir, DB_val *const key, DB_val *const data) {
 	if(!cursor->pending) {
-		if(key) *key = *(DB_val *)k2;
-		if(data) *data = *(DB_val *)d2;
+		if(key) *key = *k2;
+		if(data) *data = *d2;
 		return rc2;
 	}
 	for(;;) {
@@ -721,21 +679,20 @@ static int db_cursor_update(DB_cursor *const cursor, int rc1, MDB_val *const k1,
 		if(DB_NOTFOUND == rc1) x = +1;
 		if(DB_NOTFOUND == rc2) x = -1;
 		if(0 == x) {
-			x = db_cursor_cmp(cursor, (DB_val *)k1, (DB_val *)k2)
-				* (dir ? dir : 1);
+			x = db_cursor_cmp(cursor, k1, k2) * (dir ? dir : 1);
 		}
 		if(x > 0) {
 			cursor->state = S_PERSIST;
-			if(key) *key = *(DB_val *)k2;
-			if(data) *data = *(DB_val *)d2;
+			if(key) *key = *k2;
+			if(data) *data = *d2;
 			return 0;
 		}
 		cursor->state = 0 == x ? S_EQUAL : S_PENDING;
 		char const tombstone = tombstone_get(d1);
 		if(KEY_PRESENT == tombstone) {
 			tombstone_trim(d1);
-			if(key) *key = *(DB_val *)k1;
-			if(data) *data = *(DB_val *)d1;
+			if(key) *key = *k1;
+			if(data) *data = *d1;
 			return 0;
 		}
 
@@ -745,19 +702,18 @@ static int db_cursor_update(DB_cursor *const cursor, int rc1, MDB_val *const k1,
 			cursor->state = S_INVALID;
 			return DB_NOTFOUND;
 		}
-		MDB_cursor_op const op = dir < 0 ? MDB_PREV : MDB_NEXT;
-		rc1 = mdberr(mdb_cursor_get(cursor->pending, k1, d1, op));
+		rc1 = db_cursor_next(cursor->pending, k1, d1, dir);
 	}
 }
 DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const data) {
 	if(!cursor) return DB_EINVAL;
 	if(!cursor->pending || S_PERSIST == cursor->state) {
-		return ldb_cursor_current(cursor->persist, (MDB_val *)key, (MDB_val *)data);
+		return ldb_cursor_current(cursor->persist, key, data);
 	} else if(S_EQUAL == cursor->state || S_PENDING == cursor->state) {
-		int rc = mdberr(mdb_cursor_get(cursor->pending, (MDB_val *)key, (MDB_val *)data, MDB_GET_CURRENT));
+		int rc = db_cursor_current(cursor->pending, key, data);
 		if(DB_EINVAL == rc) return DB_NOTFOUND;
-		assert(KEY_TOMBSTONE != tombstone_get((MDB_val *)data));
-		tombstone_trim((MDB_val *)data);
+		assert(KEY_TOMBSTONE != tombstone_get(data));
+		tombstone_trim(data);
 		return rc;
 	} else if(S_INVALID == cursor->state) {
 		return DB_NOTFOUND;
@@ -768,10 +724,10 @@ DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val 
 }
 DB_FN int db__cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	MDB_val k1[1] = { *(MDB_val *)key }, d1[1];
-	MDB_val k2[1] = { *(MDB_val *)key }, d2[1];
-	int rc1 = mdberr(mdb_cursor_seek(cursor->pending, k1, d1, dir));
-	int rc2 =        ldb_cursor_seek(cursor->persist, k2, d2, dir);
+	DB_val k1[1] = { *key }, d1[1];
+	DB_val k2[1] = { *key }, d2[1];
+	int rc1 =  db_cursor_seek(cursor->pending, k1, d1, dir);
+	int rc2 = ldb_cursor_seek(cursor->persist, k2, d2, dir);
 	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, dir ? key : NULL, data);
 	// Note: We pass NULL for the output key to emulate MDB_SET semantics,
 	// which doesn't touch the key at all and leaves it pointing to the
@@ -782,22 +738,20 @@ DB_FN int db__cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *co
 DB_FN int db__cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(0 == dir) return DB_EINVAL;
-	MDB_val k1[1], d1[1], k2[1], d2[1];
-	MDB_cursor_op const op = dir < 0 ? MDB_LAST : MDB_FIRST;
-	int rc1 = mdberr(mdb_cursor_get(cursor->pending, k1, d1, op));
-	int rc2 =        ldb_cursor_first(cursor->persist, k2, d2, dir);
+	DB_val k1[1], d1[1], k2[1], d2[1];
+	int rc1 =  db_cursor_first(cursor->pending, k1, d1, dir);
+	int rc2 = ldb_cursor_first(cursor->persist, k2, d2, dir);
 	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, key, data);
 }
 DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(0 == dir) return DB_EINVAL;
 	int rc1, rc2;
-	MDB_val k1[1], d1[1], k2[1], d2[1];
+	DB_val k1[1], d1[1], k2[1], d2[1];
 	if(S_PERSIST != cursor->state) {
-		MDB_cursor_op const op = dir < 0 ? MDB_PREV : MDB_NEXT;
-		rc1 = mdberr(mdb_cursor_get(cursor->pending, k1, d1, op));
+		rc1 = db_cursor_next(cursor->pending, k1, d1, dir);
 	} else {
-		rc1 = mdberr(mdb_cursor_get(cursor->pending, k1, d1, MDB_GET_CURRENT));
+		rc1 = db_cursor_current(cursor->pending, k1, d1);
 		if(DB_EINVAL == rc1) rc1 = DB_NOTFOUND;
 	}
 	if(S_PENDING != cursor->state) {
@@ -829,7 +783,7 @@ DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *con
 	*k = *key;
 	*d = (DB_val){ 1+(data ? data->size : 0), NULL }; // Prefix with deletion flag.
 	assert(cursor->pending);
-	rc = mdberr(mdb_cursor_put(cursor->pending, (MDB_val *)k, (MDB_val *)d, MDB_RESERVE));
+	rc = db_cursor_put(cursor->pending, k, d, MDB_RESERVE); // TODO: HACK
 	if(rc < 0) return rc;
 	assert(d->data);
 	memset(d->data+0, KEY_PRESENT, 1);
@@ -848,7 +802,7 @@ DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	char tombstone = KEY_TOMBSTONE;
 	*d = (DB_val){ sizeof(tombstone), &tombstone };
 	assert(cursor->pending);
-	rc = mdberr(mdb_cursor_put(cursor->pending, (MDB_val *)k, (MDB_val *)d, 0));
+	rc = db_cursor_put(cursor->pending, k, d, 0);
 	if(rc < 0) return rc;
 	return 0;
 }
