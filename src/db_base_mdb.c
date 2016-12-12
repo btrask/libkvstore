@@ -240,7 +240,9 @@ DB_FN int db__cursor_renew(DB_txn *const txn, DB_cursor **const out) {
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
 	MDB_cursor *const c = cursor->cursor;
-	return mdberr(mdb_cursor_renew(mdb_cursor_txn(c), c));
+	int rc = mdberr(mdb_cursor_renew(mdb_cursor_txn(c), c));
+	if(DB_EINVAL == rc) rc = 0;
+	return rc;
 }
 DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 	if(!cursor) return DB_EINVAL;
