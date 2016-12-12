@@ -8,9 +8,10 @@
 #else // DB_DYNAMIC
 
 #define DB_FN static
-#define DB_BASE_V0(name) \
-DB_base const db_base_##name[1] = {{ \
+#define DB_BASE_V0(_name) \
+DB_base const db_base_##_name[1] = {{ \
 	.version = 0, \
+	.name = #_name, \
 	\
 	.env_create = db__env_create, \
 	.env_config = db__env_config, \
@@ -52,6 +53,7 @@ DB_base const db_base_##name[1] = {{ \
 
 typedef struct {
 	unsigned version;
+	char const *name; // For debugging and introspection.
 
 	// V0 methods
 	int (*env_create)(DB_env **const out);
