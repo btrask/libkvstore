@@ -26,6 +26,7 @@ int db_env_create_base(char const *const basename, DB_env **const out) {
 //	if(0 == strcmp(basename, "rocksdb")) base = db_base_rocksdb;
 //	if(0 == strcmp(basename, "hyper")) base = db_base_hyper;
 //	if(0 == strcmp(basename, "lsmdb")) base = db_base_lsmdb;
+	if(0 == strcmp(basename, "debug")) base = db_base_debug;
 	if(!base) return DB_EINVAL;
 	return base->env_create(out);
 }

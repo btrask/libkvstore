@@ -98,6 +98,7 @@ extern DB_base const db_base_leveldb[1];
 extern DB_base const db_base_rocksdb[1];
 extern DB_base const db_base_hyper[1];
 extern DB_base const db_base_lsmdb[1];
+extern DB_base const db_base_debug[1];
 
 #endif // DB_DYNAMIC
 

@@ -77,10 +77,17 @@ typedef struct {
 	void *ctx;
 } DB_cmd_data;
 
+typedef void (*DB_print_func)(void *ctx, DB_env *const env, char const *const format, ...);
+typedef struct {
+	DB_print_func fn;
+	void *ctx;
+} DB_print_data;
+
 #define DB_CFG_MAPSIZE 1 // size_t const *const data
 #define DB_CFG_COMPARE 2 // DB_cmp_data const *const data
 #define DB_CFG_COMMAND 3 // DB_cmd_data const *const data
 #define DB_CFG_TXNSIZE 4 // size_t const *const data
+#define DB_CFG_LOG 5 // DB_print_data const *const data
 
 int db_env_create_base(char const *const basename, DB_env **const out);
 

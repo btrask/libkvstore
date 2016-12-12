@@ -11,6 +11,7 @@ USE_MDB ?= 1
 USE_LEVELDB ?= 1
 USE_ROCKSDB ?= 0
 USE_HYPER ?= 0
+USE_DEBUG ?= 1
 
 CFLAGS += -std=c99 -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=500
 CFLAGS += -g -fno-omit-frame-pointer
@@ -75,14 +76,21 @@ OBJECTS := $(BUILD_DIR)/src/db_base_dynamic.o $(BUILD_DIR)/src/db_range.o $(BUIL
 
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
 
+
 ifeq ($(DB),rocksdb)
   CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
 else ifeq ($(DB),hyper)
   CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
 else ifeq ($(DB),leveldb)
   CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
-else
+else ifeq ($(DB),debug)
+  CFLAGS += -DDB_BASE_DEFAULT=db_base_debug
+else ifeq ($(DB),mdb)
   CFLAGS += -DDB_BASE_DEFAULT=db_base_mdb
+else ifndef DB
+  CFLAGS += -DDB_BASE_DEFAULT=db_base_mdb
+else
+  $(error Unknown back-end $(DB))
 endif
 
 ifeq ($(USE_MDB),1)
@@ -118,6 +126,11 @@ ifeq ($(USE_HYPER),1)
   OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
 endif
 
+ifeq ($(USE_DEBUG),1)
+  CFLAGS += -DDB_BASE_DEBUG
+  OBJECTS += $(BUILD_DIR)/src/db_base_debug.o
+endif
+
 HEADERS := $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_range.h $(INCLUDE_DIR)/kvstore/db_schema.h
 
 .PHONY: all
@@ -129,7 +142,7 @@ $(BUILD_DIR)/libkvstore.so: $(OBJECTS) $(SHARED_LIBS)
 
 $(BUILD_DIR)/libkvstore.a: $(OBJECTS) $(STATIC_LIBS)
 	@- mkdir -p $(dir $@)
-	$(AR) rs $@ $^
+	$(AR) rs $@ $(OBJECTS)
 
 $(BUILD_DIR)/src/%.o: $(SRC_DIR)/%.c | $(HEADERS)
 	@- mkdir -p $(dir $@)
