@@ -181,7 +181,7 @@ static char const *db_strerror(int const rc) {
 	case DB_ENOMEM: return "No memory";
 	case DB_EACCES: return "Access";
 	case DB_EBUSY: return "Busy";
-	case DB_EINVAL: return "Invalid";
+	case DB_EINVAL: return "Bad input value";
 	case DB_ENOSPC: return "No space";
 
 	default: return NULL;
