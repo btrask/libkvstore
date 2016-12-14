@@ -43,7 +43,10 @@ cleanup:
 	db_env_close(env); env = NULL;
 	return rc;
 }
-DB_FN int db__env_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
+	return DB_ENOTSUP; // TODO
+}
+DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
 	switch(type) {
 	case DB_CFG_MAPSIZE: {

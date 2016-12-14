@@ -56,7 +56,10 @@ cleanup:
 	db_env_close(env);
 	return rc;
 }
-DB_FN int db__env_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
+	return DB_ENOTSUP; // TODO
+}
+DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
 	// TODO: We should have a way of swapping out the inner env.
 	// And also a way of getting it to configure directly?
@@ -73,7 +76,7 @@ DB_FN int db__env_config(DB_env *const env, unsigned const type, void *data) {
 		*env->commit = *x;
 		return 0;
 	} default:
-		return db_env_config(env->main, type, data);
+		return db_env_set_config(env->main, type, data);
 	}
 }
 DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {

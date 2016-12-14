@@ -10,7 +10,8 @@ DB_base const db_base_##_name[1] = {{ \
 	.name = #_name, \
 	\
 	.env_create = db__env_create, \
-	.env_config = db__env_config, \
+	.env_get_config = db__env_get_config, \
+	.env_set_config = db__env_set_config, \
 	.env_open = db__env_open, \
 	.env_close = db__env_close, \
 	\
@@ -61,7 +62,8 @@ struct DB_base {
 
 	// V0 methods
 	int (*env_create)(DB_env **const out);
-	int (*env_config)(DB_env *const env, unsigned const type, void *data);
+	int (*env_get_config)(DB_env *const env, unsigned const type, void *data);
+	int (*env_set_config)(DB_env *const env, unsigned const type, void *data);
 	int (*env_open)(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
 	void (*env_close)(DB_env *env);
 

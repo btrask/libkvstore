@@ -50,7 +50,7 @@ int main(int argc,char * argv[])
     
 		E(db_env_create_base(base, &env));
 		size_t size = 10485760;
-		E(db_env_config(env, DB_CFG_MAPSIZE, &size));
+		E(db_env_set_config(env, DB_CFG_MAPSIZE, &size));
 //		E(db_env_set_maxreaders(env, 1));
 //		E(db_env_set_mapsize(env, 10485760));
 		E(db_env_open(env, path, 0 /*DB_FIXEDMAP*/ /*|MDB_NOSYNC*/, 0664));

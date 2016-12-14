@@ -107,7 +107,8 @@ int db_env_create_base(char const *const basename, DB_env **const out);
 int db_env_create_custom(DB_base const *const base, DB_env **const out);
 
 int db_env_create(DB_env **const out);
-int db_env_config(DB_env *const env, unsigned const type, void *data);
+int db_env_get_config(DB_env *const env, unsigned const type, void *data);
+int db_env_set_config(DB_env *const env, unsigned const type, void *data);
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
 void db_env_close(DB_env *env);
 

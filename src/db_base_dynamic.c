@@ -40,9 +40,13 @@ int db_env_create(DB_env **const out) {
 	if(!db_base_default) return DB_PANIC;
 	return db_base_default->env_create(out);
 }
-int db_env_config(DB_env *const env, unsigned const type, void *data) {
+int db_env_get_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
-	return env->isa->env_config(env, type, data);
+	return env->isa->env_get_config(env, type, data);
+}
+int db_env_set_config(DB_env *const env, unsigned const type, void *data) {
+	if(!env) return DB_EINVAL;
+	return env->isa->env_set_config(env, type, data);
 }
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
 	if(!env) return DB_EINVAL;

@@ -358,7 +358,10 @@ DB_FN int db__env_create(DB_env **const out) {
 	*out = env;
 	return 0;
 }
-DB_FN int db__env_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
+	return DB_ENOTSUP; // TODO
+}
+DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
 	switch(type) {
 	case DB_CFG_MAPSIZE: return 0;
@@ -378,7 +381,7 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 
 	int rc = 0;
 	if(env->cmp->fn) { // TODO: Currently unsupported
-		rc = db_env_config(env->tmpenv, DB_CFG_COMPARE, &env->cmp);
+		rc = db_env_set_config(env->tmpenv, DB_CFG_COMPARE, &env->cmp);
 		if(rc < 0) return rc;
 	}
 
