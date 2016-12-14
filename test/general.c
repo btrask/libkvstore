@@ -45,7 +45,7 @@ int main(int const argc, char const *const argv[]) {
 	DB_txn *parent = NULL;
 	for(uint32_t i = 0; i < numberof(nested); i++) {
 		E(db_txn_begin(env, parent, DB_RDWR, &nested[i]));
-		if(i > 0) {
+		if(parent) {
 			E(db_get(nested[i], key, val));
 			CHECK(read(val) == i-1, "get");
 		}
