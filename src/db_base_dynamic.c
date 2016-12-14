@@ -110,6 +110,15 @@ int db_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) 
 	return txn->isa->cmd(txn, buf, len);
 }
 
+int db_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
+	if(!txn) return DB_EINVAL;
+	return txn->isa->countr(txn, range, out);
+}
+int db_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
+	if(!txn) return DB_EINVAL;
+	return txn->isa->delr(txn, range, out);
+}
+
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->cursor_open(txn, out);

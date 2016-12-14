@@ -30,6 +30,9 @@ DB_base const db_base_##_name[1] = {{ \
 	.del = db__del, \
 	.cmd = db__cmd, \
 	\
+	.countr = db__countr, \
+	.delr = db__delr, \
+	\
 	.cursor_open = db__cursor_open, \
 	.cursor_close = db__cursor_close, \
 	.cursor_reset = db__cursor_reset, \
@@ -77,6 +80,9 @@ struct DB_base {
 	int (*del)(DB_txn *const txn, DB_val *const key, unsigned const flags);
 	int (*cmd)(DB_txn *const txn, unsigned char const *const buf, size_t const len);
 
+	int (*countr)(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
+	int (*delr)(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
+
 	int (*cursor_open)(DB_txn *const txn, DB_cursor **const out);
 	void (*cursor_close)(DB_cursor *const cursor);
 	void (*cursor_reset)(DB_cursor *const cursor);
@@ -111,7 +117,10 @@ extern DB_base const db_base_debug[1];
 
 int db_helper_get(DB_txn *const txn, DB_val *const key, DB_val *const data);
 int db_helper_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags);
-int db_helper_del(DB_txn *const txn, DB_val *const key, unsigned const flags); // Might be slower because key is read.
+int db_helper_del(DB_txn *const txn, DB_val *const key, unsigned const flags); // Possibly slow.
+
+int db_helper_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out); // Very slow.
+int db_helper_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out); // Very slow and can bloat transactions.
 
 int db_helper_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 int db_helper_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);

@@ -196,6 +196,19 @@ DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t cons
 	return rc;
 }
 
+DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
+	if(!txn) return DB_EINVAL;
+	int rc = db_countr(txn->txn, range, out);
+	LOG(txn->env, rc);
+	return rc;
+}
+DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
+	if(!txn) return DB_EINVAL;
+	int rc = db_delr(txn->txn, range, out);
+	LOG(txn->env, rc);
+	return rc;
+}
+
 DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
 	DB_cursor *cursor = NULL;

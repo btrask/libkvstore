@@ -596,6 +596,13 @@ DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t cons
 	return txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len);
 }
 
+DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
+	return db_helper_countr(txn, range, out);
+}
+DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
+	return db_helper_delr(txn, range, out);
+}
+
 DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
 	if(!out) return DB_EINVAL;

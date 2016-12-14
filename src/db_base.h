@@ -5,8 +5,8 @@
 #define KVSTORE_DB_BASE_H
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
-#include <sys/types.h>
 
 // Equivalent to MDB constants.
 // More may be exposed here in the future.
@@ -124,6 +124,9 @@ int db_get(DB_txn *const txn, DB_val *const key, DB_val *const data);
 int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags);
 int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags); // Doesn't return DB_NOTFOUND if key doesn't exist (a flag may be added in the future).
 int db_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len); // For efficient logical replication. Must call set_cmdfn to implement.
+
+int db_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
+int db_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
 
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out);
 void db_cursor_close(DB_cursor *const cursor);
