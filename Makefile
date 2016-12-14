@@ -134,7 +134,7 @@ ifeq ($(USE_DEBUG),1)
   OBJECTS += $(BUILD_DIR)/src/db_base_debug.o
 endif
 
-HEADERS := $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_schema.h
+HEADERS := $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_base_internal.h $(INCLUDE_DIR)/kvstore/db_schema.h
 
 .PHONY: all
 all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(HEADERS)

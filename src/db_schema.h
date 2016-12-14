@@ -5,7 +5,7 @@
 #define KVSTORE_DB_SCHEMA_H
 
 #include <stdint.h>
-#include <kvstore/db_range.h>
+#include <kvstore/db_base.h>
 
 #ifndef NDEBUG
 #define db_assert(x) assert(x)
