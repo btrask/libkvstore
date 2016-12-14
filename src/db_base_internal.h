@@ -1,11 +1,7 @@
+// Copyright 2016 Ben Trask
+// MIT licensed (see LICENSE for details)
+
 #include "db_base.h"
-
-#ifndef DB_DYNAMIC
-
-#define DB_FN
-#define DB_BASE_V0(name)
-
-#else // DB_DYNAMIC
 
 #define DB_FN static
 #define DB_BASE_V0(_name) \
@@ -55,7 +51,7 @@ DB_base const db_base_##_name[1] = {{ \
 	.cursor_del = db__cursor_del, \
 }};
 
-typedef struct {
+struct DB_base {
 	unsigned version;
 	char const *name; // For debugging and introspection.
 
@@ -100,7 +96,7 @@ typedef struct {
 
 	int (*cursor_put)(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags);
 	int (*cursor_del)(DB_cursor *const cursor, unsigned const flags);
-} DB_base;
+};
 
 extern DB_base const *const db_base_default;
 extern DB_base const db_base_mdb[1];
@@ -120,6 +116,4 @@ int db_helper_del(DB_txn *const txn, DB_val *const key, unsigned const flags); /
 int db_helper_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 int db_helper_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 int db_helper_cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
-
-#endif // DB_DYNAMIC
 

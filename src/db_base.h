@@ -66,6 +66,7 @@ typedef struct {
 	DB_val max[1];
 } DB_range;
 
+typedef struct DB_base DB_base;
 typedef struct DB_env DB_env;
 typedef struct DB_txn DB_txn;
 typedef struct DB_cursor DB_cursor;
@@ -95,6 +96,7 @@ typedef struct {
 #define DB_CFG_LOG 5 // DB_print_data const *const data
 
 int db_env_create_base(char const *const basename, DB_env **const out);
+int db_env_create_custom(DB_base const *const base, DB_env **const out);
 
 int db_env_create(DB_env **const out);
 int db_env_config(DB_env *const env, unsigned const type, void *data);

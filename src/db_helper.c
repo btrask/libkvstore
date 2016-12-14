@@ -1,9 +1,9 @@
-// Copyright 2014-2015 Ben Trask
+// Copyright 2014-2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
 #include <assert.h>
 #include <stdio.h>
-#include <kvstore/db_range.h>
+#include "db_base_internal.h"
 
 int db_helper_get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
 	DB_cursor *cursor;
