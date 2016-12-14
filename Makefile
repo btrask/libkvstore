@@ -1,6 +1,9 @@
 # Copyright 2016 Ben Trask
 # MIT licensed (see LICENSE for details)
 
+.SUFFIXES:
+.SECONDARY:
+
 ROOT_DIR := .
 BUILD_DIR := $(ROOT_DIR)/build
 SRC_DIR := $(ROOT_DIR)/src
@@ -168,12 +171,17 @@ distclean: clean
 	- $(MAKE) distclean -C $(DEPS_DIR)/snappy
 
 .PHONY: test
-test: $(BUILD_DIR)/test/mtest
-	$(BUILD_DIR)/test/mtest
+test: mtest.run general.run
 
-$(BUILD_DIR)/test/mtest: $(BUILD_DIR)/test/mtest.o $(BUILD_DIR)/libkvstore.a $(STATIC_LIBS)
-	@- mkdir -p $(dir $@)
+.PHONY: %.run
+%.run: $(BUILD_DIR)/test/%
 	rm -rf ./testdb ./testdb-lock
+	$^ mdb ./testdb > $^.mdb.log
+	rm -rf ./testdb ./testdb-lock
+	$^ leveldb ./testdb > $^.leveldb.log
+
+$(BUILD_DIR)/test/%: $(BUILD_DIR)/test/%.o $(BUILD_DIR)/libkvstore.a $(STATIC_LIBS)
+	@- mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $^ $(LIBS) -o $@
 
 

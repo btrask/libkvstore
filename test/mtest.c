@@ -11,6 +11,7 @@
  * top-level directory of the distribution or, alternatively, at
  * <http://www.OpenLDAP.org/license.html>.
  */
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -23,6 +24,10 @@
 
 int main(int argc,char * argv[])
 {
+	assert(3 == argc);
+	char const *const base = argv[1];
+	char const *const path = argv[2];
+
 	int i = 0, j = 0, rc;
 	DB_env *env;
 	DB_val key, data;
@@ -43,12 +48,12 @@ int main(int argc,char * argv[])
 			values[i] = rand()%1024;
 	    }
     
-		E(db_env_create(&env));
+		E(db_env_create_base(base, &env));
 		size_t size = 10485760;
 		E(db_env_config(env, DB_CFG_MAPSIZE, &size));
 //		E(db_env_set_maxreaders(env, 1));
 //		E(db_env_set_mapsize(env, 10485760));
-		E(db_env_open(env, "./testdb", 0 /*DB_FIXEDMAP*/ /*|MDB_NOSYNC*/, 0664));
+		E(db_env_open(env, path, 0 /*DB_FIXEDMAP*/ /*|MDB_NOSYNC*/, 0664));
 
 		E(db_txn_begin(env, NULL, 0, &txn));
 //		E(db_dbi_open(txn, NULL, 0, &dbi));
