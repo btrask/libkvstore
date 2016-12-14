@@ -574,16 +574,10 @@ DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 }
 
 DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
-	DB_cursor *cursor;
-	int rc = db_txn_cursor(txn, &cursor);
-	if(rc < 0) return rc;
-	return db_cursor_seek(cursor, key, data, 0);
+	return db_helper_get(txn, key, data);
 }
 DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
-	DB_cursor *cursor;
-	int rc = db_txn_cursor(txn, &cursor);
-	if(rc < 0) return rc;
-	return db_cursor_put(cursor, key, data, flags);
+	return db_helper_put(txn, key, data, flags);
 }
 DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
@@ -760,6 +754,16 @@ DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *co
 		rc2 = ldb_cursor_current(cursor->persist, k2, d2);
 	}
 	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, key, data);
+}
+
+DB_FN int db__cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	return db_helper_cursor_seekr(cursor, range, key, data, dir);
+}
+DB_FN int db__cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	return db_helper_cursor_firstr(cursor, range, key, data, dir);
+}
+DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	return db_helper_cursor_nextr(cursor, range, key, data, dir);
 }
 
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {

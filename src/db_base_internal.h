@@ -47,6 +47,10 @@ DB_base const db_base_##_name[1] = {{ \
 	.cursor_first = db__cursor_first, \
 	.cursor_next = db__cursor_next, \
 	\
+	.cursor_seekr = db__cursor_seekr, \
+	.cursor_firstr = db__cursor_firstr, \
+	.cursor_nextr = db__cursor_nextr, \
+	\
 	.cursor_put = db__cursor_put, \
 	.cursor_del = db__cursor_del, \
 }};
@@ -90,6 +94,10 @@ typedef struct {
 	int (*cursor_first)(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir);
 	int (*cursor_next)(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir);
 
+	int (*cursor_seekr)(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
+	int (*cursor_firstr)(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
+	int (*cursor_nextr)(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
+
 	int (*cursor_put)(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags);
 	int (*cursor_del)(DB_cursor *const cursor, unsigned const flags);
 } DB_base;
@@ -101,6 +109,17 @@ extern DB_base const db_base_rocksdb[1];
 extern DB_base const db_base_hyper[1];
 extern DB_base const db_base_lsmdb[1];
 extern DB_base const db_base_debug[1];
+
+// Helper functions
+// Use these to get a simple implementation in terms of other operations.
+
+int db_helper_get(DB_txn *const txn, DB_val *const key, DB_val *const data);
+int db_helper_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags);
+int db_helper_del(DB_txn *const txn, DB_val *const key, unsigned const flags); // Might be slower because key is read.
+
+int db_helper_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
+int db_helper_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
+int db_helper_cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 
 #endif // DB_DYNAMIC
 

@@ -61,6 +61,11 @@ typedef struct {
 	void *data;
 } DB_val;
 
+typedef struct {
+	DB_val min[1];
+	DB_val max[1];
+} DB_range;
+
 typedef struct DB_env DB_env;
 typedef struct DB_txn DB_txn;
 typedef struct DB_cursor DB_cursor;
@@ -130,6 +135,10 @@ int db_cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const 
 int db_cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir);
 int db_cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir);
 int db_cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir);
+
+int db_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
+int db_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
+int db_cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 
 int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags);
 int db_cursor_del(DB_cursor *const cursor, unsigned const flags);

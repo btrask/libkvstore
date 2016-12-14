@@ -235,6 +235,16 @@ DB_FN int db_cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *con
 	return mdberr(lsmdb_cursor_next(cursor->cursor, (MDB_val *)key, (MDB_val *)data, dir));
 }
 
+DB_FN int db__cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	return db_helper_cursor_seekr(cursor, range, key, data, dir);
+}
+DB_FN int db__cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	return db_helper_cursor_firstr(cursor, range, key, data, dir);
+}
+DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	return db_helper_cursor_nextr(cursor, range, key, data, dir);
+}
+
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
 	MDB_val null = { 0, NULL };

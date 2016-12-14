@@ -178,23 +178,13 @@ DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 // because otherwise MDB has to construct its own temporary cursor
 // on the stack, which is just wasteful if we might need it again.
 DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
-	DB_cursor *cursor;
-	int rc = db_txn_cursor(txn, &cursor);
-	if(rc < 0) return rc;
-	return db_cursor_seek(cursor, key, data, 0);
+	return db_helper_get(txn, key, data);
 }
 DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
-	DB_cursor *cursor;
-	int rc = db_txn_cursor(txn, &cursor);
-	if(rc < 0) return rc;
-	return db_cursor_put(cursor, key, data, flags);
+	return db_helper_put(txn, key, data, flags);
 }
 DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
-	if(!txn) return DB_EINVAL;
-	if(flags) return DB_EINVAL;
-	int rc = mdberr(mdb_del(txn->txn, MDB_MAIN_DBI, (MDB_val *)key, NULL));
-	if(DB_NOTFOUND == rc) return 0; // TODO: Add a flag to expose this.
-	return rc;
+	return db_helper_del(txn, key, flags);
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn) return DB_EINVAL;
@@ -295,6 +285,16 @@ DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *co
 	MDB_val *const k = key ? (MDB_val *)key : _k;
 	MDB_val *const d = data ? (MDB_val *)data : _d;
 	return mdberr(mdb_cursor_get(cursor->cursor, (MDB_val *)k, (MDB_val *)d, op));
+}
+
+DB_FN int db__cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	return db_helper_cursor_seekr(cursor, range, key, data, dir);
+}
+DB_FN int db__cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	return db_helper_cursor_firstr(cursor, range, key, data, dir);
+}
+DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	return db_helper_cursor_nextr(cursor, range, key, data, dir);
 }
 
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {

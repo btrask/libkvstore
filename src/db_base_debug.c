@@ -283,6 +283,25 @@ DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *co
 	return rc;
 }
 
+DB_FN int db__cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	if(!cursor) return DB_EINVAL;
+	int rc = db_cursor_seekr(cursor->cursor, range, key, data, dir);
+	LOG(cursor->txn->env, rc);
+	return rc;
+}
+DB_FN int db__cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	if(!cursor) return DB_EINVAL;
+	int rc = db_cursor_firstr(cursor->cursor, range, key, data, dir);
+	LOG(cursor->txn->env, rc);
+	return rc;
+}
+DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	if(!cursor) return DB_EINVAL;
+	int rc = db_cursor_nextr(cursor->cursor, range, key, data, dir);
+	LOG(cursor->txn->env, rc);
+	return rc;
+}
+
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
 	int rc = db_cursor_put(cursor->cursor, key, data, flags);

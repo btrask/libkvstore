@@ -5,7 +5,29 @@
 #include <stdio.h>
 #include <kvstore/db_range.h>
 
-int db_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+int db_helper_get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
+	DB_cursor *cursor;
+	int rc = db_txn_cursor(txn, &cursor);
+	if(rc < 0) return rc;
+	return db_cursor_seek(cursor, key, data, 0);
+}
+int db_helper_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
+	DB_cursor *cursor;
+	int rc = db_txn_cursor(txn, &cursor);
+	if(rc < 0) return rc;
+	return db_cursor_put(cursor, key, data, flags);
+}
+int db_helper_del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
+	DB_cursor *cursor;
+	int rc = db_txn_cursor(txn, &cursor);
+	if(rc < 0) return rc;
+	rc = db_cursor_seek(cursor, key, NULL, 0);
+	if(DB_NOTFOUND == rc) return 0; // Unless flags & DB_NOOVERWRITE?
+	if(rc < 0) return rc;
+	return db_cursor_del(cursor, flags);
+}
+
+int db_helper_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
 	assert(db_cursor_cmp(cursor, range->min, range->max) < 0);
 	int rc = db_cursor_seek(cursor, key, data, dir);
 	if(rc < 0) return rc;
@@ -15,7 +37,7 @@ int db_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val
 	db_cursor_clear(cursor);
 	return DB_NOTFOUND;
 }
-int db_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+int db_helper_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
 	assert(db_cursor_cmp(cursor, range->min, range->max) < 0);
 	if(0 == dir) return DB_EINVAL;
 	DB_val const *const first = dir > 0 ? range->min : range->max;
@@ -38,7 +60,7 @@ int db_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_va
 		return DB_NOTFOUND;
 	}
 }
-int db_cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+int db_helper_cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
 	assert(db_cursor_cmp(cursor, range->min, range->max) < 0);
 	DB_val tmp;
 	DB_val *k = key ? key : &tmp;

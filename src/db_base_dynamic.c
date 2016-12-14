@@ -152,6 +152,19 @@ int db_cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const dat
 	return cursor->isa->cursor_next(cursor, key, data, dir);
 }
 
+int db_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	if(!cursor) return DB_EINVAL;
+	return cursor->isa->cursor_seekr(cursor, range, key, data, dir);
+}
+int db_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	if(!cursor) return DB_EINVAL;
+	return cursor->isa->cursor_firstr(cursor, range, key, data, dir);
+}
+int db_cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
+	if(!cursor) return DB_EINVAL;
+	return cursor->isa->cursor_nextr(cursor, range, key, data, dir);
+}
+
 int db_cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
 	return cursor->isa->cursor_put(cursor, key, data, flags);

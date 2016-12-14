@@ -75,7 +75,7 @@ WARNINGS += -Wformat=2
 SHARED_LIBS :=
 STATIC_LIBS :=
 LIBS := -lpthread
-OBJECTS := $(BUILD_DIR)/src/db_base_dynamic.o $(BUILD_DIR)/src/db_range.o $(BUILD_DIR)/src/db_schema.o
+OBJECTS := $(BUILD_DIR)/src/db_base_dynamic.o $(BUILD_DIR)/src/db_helper.o $(BUILD_DIR)/src/db_schema.o
 
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
 
@@ -134,7 +134,7 @@ ifeq ($(USE_DEBUG),1)
   OBJECTS += $(BUILD_DIR)/src/db_base_debug.o
 endif
 
-HEADERS := $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_range.h $(INCLUDE_DIR)/kvstore/db_schema.h
+HEADERS := $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_schema.h
 
 .PHONY: all
 all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(HEADERS)
