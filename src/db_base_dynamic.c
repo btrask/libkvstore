@@ -72,6 +72,10 @@ int db_txn_renew(DB_txn *const txn) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->txn_renew(txn);
 }
+int db_txn_upgrade(DB_txn *const txn, unsigned const flags) {
+	if(!txn) return DB_EINVAL;
+	return txn->isa->txn_upgrade(txn, flags);
+}
 int db_txn_env(DB_txn *const txn, DB_env **const out) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->txn_env(txn, out);

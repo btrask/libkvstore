@@ -146,6 +146,10 @@ DB_FN int db__txn_renew(DB_txn *const txn) {
 	}
 	return 0;
 }
+DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
+	if(!txn) return DB_EINVAL;
+	return DB_ENOTSUP;
+}
 DB_FN int db__txn_env(DB_txn *const txn, DB_env **const out) {
 	if(!txn) return DB_EINVAL;
 	if(out) *out = txn->env;

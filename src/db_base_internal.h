@@ -19,6 +19,7 @@ DB_base const db_base_##_name[1] = {{ \
 	.txn_abort = db__txn_abort, \
 	.txn_reset = db__txn_reset, \
 	.txn_renew = db__txn_renew, \
+	.txn_upgrade = db__txn_upgrade, \
 	.txn_env = db__txn_env, \
 	.txn_parent = db__txn_parent, \
 	.txn_get_flags = db__txn_get_flags, \
@@ -69,6 +70,7 @@ struct DB_base {
 	void (*txn_abort)(DB_txn *const txn);
 	void (*txn_reset)(DB_txn *const txn);
 	int (*txn_renew)(DB_txn *const txn);
+	int (*txn_upgrade)(DB_txn *const txn, unsigned const flags);
 	int (*txn_env)(DB_txn *const txn, DB_env **const out);
 	int (*txn_parent)(DB_txn *const txn, DB_txn **const out);
 	int (*txn_get_flags)(DB_txn *const txn, unsigned *const flags);
