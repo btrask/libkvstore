@@ -35,18 +35,18 @@ static int mdberr(int const rc) {
 }
 
 DB_FN int db__env_create(DB_env **const out) {
-	MDB_env *e = NULL;
-	int rc = mdberr(mdb_env_create(&e));
-	if(rc < 0) return rc;
+	int rc = 0;
 	DB_env *env = calloc(1, sizeof(DB_env));
-	if(!env) {
-		mdb_env_close(e);
-		return DB_ENOMEM;
-	}
+	if(!env) rc = DB_ENOMEM;
+	if(rc < 0) goto cleanup;
 	env->isa = db_base_mdb;
-	env->env = e;
-	*out = env;
-	return 0;
+
+	rc = mdberr(mdb_env_create(&env->env));
+	if(rc < 0) goto cleanup;
+	*out = env; env = NULL;
+cleanup:
+	db_env_close(env); env = NULL;
+	return rc;
 }
 DB_FN int db__env_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
@@ -81,56 +81,55 @@ cleanup:
 	mdb_txn_abort(txn); txn = NULL;
 	return rc;
 }
-DB_FN void db__env_close(DB_env *const env) {
+DB_FN void db__env_close(DB_env *env) {
 	if(!env) return;
-	mdb_env_close(env->env);
+	mdb_env_close(env->env); env->env = NULL;
 	env->isa = NULL;
 	env->env = NULL;
 	env->cmp->fn = NULL;
 	env->cmp->ctx = NULL;
 	env->cmd->fn = NULL;
 	env->cmd->ctx = NULL;
-	free(env);
+	free(env); env = NULL;
 }
 
 DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
 	if(!env) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
-	MDB_txn *const psub = parent ? parent->txn : NULL;
-	MDB_txn *subtxn;
-	int rc = mdberr(mdb_txn_begin(env->env, psub, flags, &subtxn));
-	if(rc < 0) return rc;
+	int rc = 0;
 	DB_txn *txn = malloc(sizeof(struct DB_txn));
-	if(!txn) {
-		mdb_txn_abort(subtxn);
-		return DB_ENOMEM;
-	}
+	if(!txn) rc = DB_ENOMEM;
+	if(rc < 0) goto cleanup;
 	txn->isa = db_base_mdb;
+
+	rc = mdberr(mdb_txn_begin(env->env, parent ? parent->txn : NULL, flags, &txn->txn));
+	if(rc < 0) goto cleanup;
 	txn->env = env;
 	txn->parent = parent;
-	txn->txn = subtxn;
 	txn->flags = flags;
 	txn->cursor = NULL;
-	*out = txn;
-	return 0;
-}
-DB_FN int db__txn_commit(DB_txn *const txn) {
-	if(!txn) return DB_EINVAL;
-	db_cursor_close(txn->cursor);
-	int rc = mdberr(mdb_txn_commit(txn->txn));
-	txn->isa = NULL;
-	txn->env = NULL;
-	free(txn);
+	*out = txn; txn = NULL;
+cleanup:
+	db_txn_abort(txn); txn = NULL;
 	return rc;
 }
-DB_FN void db__txn_abort(DB_txn *const txn) {
+DB_FN int db__txn_commit(DB_txn *txn) {
+	if(!txn) return DB_EINVAL;
+	db_cursor_close(txn->cursor); txn->cursor = NULL;
+	int rc = mdberr(mdb_txn_commit(txn->txn)); txn->txn = NULL;
+	txn->isa = NULL;
+	txn->env = NULL;
+	free(txn); txn = NULL;
+	return rc;
+}
+DB_FN void db__txn_abort(DB_txn *txn) {
 	if(!txn) return;
-	db_cursor_close(txn->cursor);
-	mdb_txn_abort(txn->txn);
+	db_cursor_close(txn->cursor); txn->cursor = NULL;
+	mdb_txn_abort(txn->txn); txn->txn = NULL;
 	txn->isa = NULL;
 	txn->env = NULL;
 	txn->parent = NULL;
-	free(txn);
+	free(txn); txn = NULL;
 }
 DB_FN void db__txn_reset(DB_txn *const txn) {
 	if(!txn) return;
@@ -152,17 +151,20 @@ DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
 }
 DB_FN int db__txn_env(DB_txn *const txn, DB_env **const out) {
 	if(!txn) return DB_EINVAL;
-	if(out) *out = txn->env;
+	if(!out) return DB_EINVAL;
+	*out = txn->env;
 	return 0;
 }
 DB_FN int db__txn_parent(DB_txn *const txn, DB_txn **const out) {
 	if(!txn) return DB_EINVAL;
-	if(out) *out = txn->parent;
+	if(!out) return DB_EINVAL;
+	*out = txn->parent;
 	return 0;
 }
 DB_FN int db__txn_get_flags(DB_txn *const txn, unsigned *const flags) {
 	if(!txn) return DB_EINVAL;
-	if(flags) *flags = txn->flags;
+	if(!flags) return DB_EINVAL;
+	*flags = txn->flags;
 	return 0;
 }
 DB_FN int db__txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *const b) {
@@ -170,11 +172,13 @@ DB_FN int db__txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *co
 }
 DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
+	if(!out) return DB_EINVAL;
+	if(txn->parent) return db_txn_cursor(txn->parent, out);
 	if(!txn->cursor) {
-		int rc = db_cursor_renew(txn, &txn->cursor);
+		int rc = db_cursor_open(txn, &txn->cursor);
 		if(rc < 0) return rc;
 	}
-	if(out) *out = txn->cursor;
+	*out = txn->cursor;
 	return 0;
 }
 
@@ -205,26 +209,26 @@ DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 
 DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
-	MDB_cursor *c = NULL;
-	int rc = mdberr(mdb_cursor_open(txn->txn, MDB_MAIN_DBI, &c));
-	if(rc < 0) return rc;
+	int rc = 0;
 	DB_cursor *cursor = calloc(1, sizeof(DB_cursor));
-	if(!cursor) {
-		mdb_cursor_close(c);
-		return DB_ENOMEM;
-	}
+	if(!cursor) rc = DB_ENOMEM;
+	if(rc < 0) goto cleanup;
 	cursor->isa = db_base_mdb;
+
+	rc = mdberr(mdb_cursor_open(txn->txn, MDB_MAIN_DBI, &cursor->cursor));
+	if(rc < 0) goto cleanup;
 	cursor->txn = txn;
-	cursor->cursor = c;
-	*out = cursor;
-	return 0;
+	*out = cursor; cursor = NULL;
+cleanup:
+	db_cursor_close(cursor); cursor = NULL;
+	return rc;
 }
-DB_FN void db__cursor_close(DB_cursor *const cursor) {
+DB_FN void db__cursor_close(DB_cursor *cursor) {
 	if(!cursor) return;
-	mdb_cursor_close(cursor->cursor);
+	mdb_cursor_close(cursor->cursor); cursor->cursor = NULL;
 	cursor->isa = NULL;
 	cursor->txn = NULL;
-	free(cursor);
+	free(cursor); cursor = NULL;
 }
 DB_FN void db__cursor_reset(DB_cursor *const cursor) {
 	// Do nothing.
@@ -247,7 +251,8 @@ DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 }
 DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 	if(!cursor) return DB_EINVAL;
-	if(out) *out = cursor->txn;
+	if(!out) return DB_EINVAL;
+	*out = cursor->txn;
 	return 0;
 }
 DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {

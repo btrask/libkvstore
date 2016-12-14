@@ -89,11 +89,19 @@ typedef struct {
 	void *ctx;
 } DB_print_data;
 
+typedef int (*DB_commit_func)(void *ctx, DB_env *const env, void *todo); // TODO
+typedef struct {
+	DB_commit_func fn;
+	void *ctx;
+} DB_commit_data;
+
 #define DB_CFG_MAPSIZE 1 // size_t const *const data
 #define DB_CFG_COMPARE 2 // DB_cmp_data const *const data
 #define DB_CFG_COMMAND 3 // DB_cmd_data const *const data
 #define DB_CFG_TXNSIZE 4 // size_t const *const data
 #define DB_CFG_LOG 5 // DB_print_data const *const data
+#define DB_CFG_INNERDB 6 // DB_env *data (takes ownership)
+#define DB_CFG_COMMIT 7 // DB_commit_data const *const data
 
 int db_env_create_base(char const *const basename, DB_env **const out);
 int db_env_create_custom(DB_base const *const base, DB_env **const out);
@@ -101,11 +109,11 @@ int db_env_create_custom(DB_base const *const base, DB_env **const out);
 int db_env_create(DB_env **const out);
 int db_env_config(DB_env *const env, unsigned const type, void *data);
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
-void db_env_close(DB_env *const env);
+void db_env_close(DB_env *env);
 
 int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out);
-int db_txn_commit(DB_txn *const txn);
-void db_txn_abort(DB_txn *const txn);
+int db_txn_commit(DB_txn *txn);
+void db_txn_abort(DB_txn *txn);
 void db_txn_reset(DB_txn *const txn);
 int db_txn_renew(DB_txn *const txn);
 int db_txn_upgrade(DB_txn *const txn, unsigned const flags);
@@ -130,7 +138,7 @@ int db_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const ou
 int db_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
 
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out);
-void db_cursor_close(DB_cursor *const cursor);
+void db_cursor_close(DB_cursor *cursor);
 void db_cursor_reset(DB_cursor *const cursor);
 int db_cursor_renew(DB_txn *const txn, DB_cursor **const out);
 int db_cursor_clear(DB_cursor *const cursor);

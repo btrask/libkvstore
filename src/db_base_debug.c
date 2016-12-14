@@ -41,20 +41,18 @@ static void default_log(void *ctx, DB_env *const env, char const *const format, 
 }
 
 DB_FN int db__env_create(DB_env **const out) {
-	DB_env *env = NULL;
-	DB_env *sub = NULL;
-	int rc = db_env_create_base("mdb", &sub);
-	if(rc < 0) goto cleanup;
-	env = calloc(1, sizeof(DB_env));
+	int rc = 0;
+	DB_env *env = calloc(1, sizeof(DB_env));
 	if(!env) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
 	env->isa = db_base_debug;
-	env->env = sub; sub = NULL;
+
+	rc = db_env_create_base("mdb", &env->env);
+	if(rc < 0) goto cleanup;
 	*env->log = (DB_print_data){ default_log, stderr };
 	*out = env; env = NULL;
 cleanup:
-	db_env_close(sub);
-	free(env);
+	db_env_close(env); env = NULL;
 	return 0;
 }
 DB_FN int db__env_config(DB_env *const env, unsigned const type, void *data) {
@@ -63,10 +61,16 @@ DB_FN int db__env_config(DB_env *const env, unsigned const type, void *data) {
 	// And also a way of getting it to configure directly?
 	// Ownership becomes a little bit complex...
 	switch(type) {
-	case DB_CFG_LOG:
-		*env->log = *(DB_print_data *)data;
+	case DB_CFG_LOG: {
+		DB_print_data const *const x = data;
+		*env->log = *x;
 		return 0;
-	default:
+	} case DB_CFG_INNERDB: {
+		DB_env *const x = data;
+		db_env_close(env->env);
+		env->env = x;
+		return 0;
+	} default:
 		return db_env_config(env->env, type, data);
 	}
 }
@@ -76,36 +80,34 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 	LOG(env, rc);
 	return rc;
 }
-DB_FN void db__env_close(DB_env *const env) {
+DB_FN void db__env_close(DB_env *env) {
 	if(!env) return;
 	LOG(env, 0);
 	db_env_close(env->env); env->env = NULL;
 	env->isa = NULL;
-	free(env);
+	free(env); env = NULL;
 }
 
 DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
 	if(!env) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
-	DB_txn *txn = NULL;
-	DB_txn *sub = NULL;
-	int rc = db_txn_begin(env->env, parent ? parent->txn : NULL, flags, &sub);
-	if(rc < 0) goto cleanup;
-	txn = calloc(1, sizeof(DB_txn));
+	int rc = 0;
+	DB_txn *txn = calloc(1, sizeof(DB_txn));
 	if(!txn) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
 	txn->isa = db_base_debug;
+
+	rc = db_txn_begin(env->env, parent ? parent->txn : NULL, flags, &txn->txn);
+	if(rc < 0) goto cleanup;
 	txn->env = env;
 	txn->parent = parent;
-	txn->txn = sub; sub = NULL;
 	*out = txn; txn = NULL;
 cleanup:
-	db_txn_abort(sub);
-	free(txn);
+	db_txn_abort(txn); txn = NULL;
 	LOG(env, rc);
 	return rc;
 }
-DB_FN int db__txn_commit(DB_txn *const txn) {
+DB_FN int db__txn_commit(DB_txn *txn) {
 	if(!txn) return DB_EINVAL;
 	LOG(txn->env, 0);
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
@@ -114,10 +116,10 @@ DB_FN int db__txn_commit(DB_txn *const txn) {
 	txn->env = NULL;
 	txn->parent = NULL;
 	txn->txn = NULL;
-	free(txn);
+	free(txn); txn = NULL;
 	return rc;
 }
-DB_FN void db__txn_abort(DB_txn *const txn) {
+DB_FN void db__txn_abort(DB_txn *txn) {
 	if(!txn) return;
 	LOG(txn->env, 0);
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
@@ -126,7 +128,7 @@ DB_FN void db__txn_abort(DB_txn *const txn) {
 	txn->env = NULL;
 	txn->parent = NULL;
 	txn->txn = NULL;
-	free(txn);
+	free(txn); txn = NULL;
 }
 DB_FN void db__txn_reset(DB_txn *const txn) {
 	if(!txn) return;
@@ -148,12 +150,14 @@ DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
 }
 DB_FN int db__txn_env(DB_txn *const txn, DB_env **const out) {
 	if(!txn) return DB_EINVAL;
-	if(out) *out = txn->env;
+	if(!out) return DB_EINVAL;
+	*out = txn->env;
 	return 0;
 }
 DB_FN int db__txn_parent(DB_txn *const txn, DB_txn **const out) {
 	if(!txn) return DB_EINVAL;
-	if(out) *out = txn->parent;
+	if(!out) return DB_EINVAL;
+	*out = txn->parent;
 	return 0;
 }
 DB_FN int db__txn_get_flags(DB_txn *const txn, unsigned *const flags) {
@@ -167,16 +171,14 @@ DB_FN int db__txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *co
 }
 DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
+	if(!out) return DB_EINVAL;
 	int rc = 0;
 	if(!txn->cursor) rc = db_cursor_renew(txn, &txn->cursor);
-	if(out) *out = txn->cursor;
+	*out = txn->cursor;
 	LOG(txn->env, rc);
 	return rc;
 }
 
-// Use our own cursor for these rather than mdb_get/put
-// because otherwise MDB has to construct its own temporary cursor
-// on the stack, which is just wasteful if we might need it again.
 DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
 	if(!txn) return DB_EINVAL;
 	int rc = db_get(txn->txn, key, data);
@@ -217,24 +219,22 @@ DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 
 DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
-	DB_cursor *cursor = NULL;
-	DB_cursor *sub = NULL;
-	int rc = db_cursor_open(txn->txn, &sub);
-	if(rc < 0) goto cleanup;
-	cursor = calloc(1, sizeof(DB_cursor));
+	int rc = 0;
+	DB_cursor *cursor = calloc(1, sizeof(DB_cursor));
 	if(!cursor) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
 	cursor->isa = db_base_debug;
+
+	rc = db_cursor_open(txn->txn, &cursor->cursor);
+	if(rc < 0) goto cleanup;
 	cursor->txn = txn;
-	cursor->cursor = sub; sub = NULL;
 	*out = cursor; cursor = NULL;
 cleanup:
-	db_cursor_close(sub);
-	free(cursor);
+	db_cursor_close(cursor); cursor = NULL;
 	LOG(txn->env, rc);
 	return rc;
 }
-DB_FN void db__cursor_close(DB_cursor *const cursor) {
+DB_FN void db__cursor_close(DB_cursor *cursor) {
 	if(!cursor) return;
 	LOG(cursor->txn->env, 0);
 	db_cursor_close(cursor->cursor); cursor->cursor = NULL;
@@ -269,7 +269,8 @@ DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 }
 DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 	if(!cursor) return DB_EINVAL;
-	if(out) *out = cursor->txn;
+	if(!out) return DB_EINVAL;
+	*out = cursor->txn;
 	return 0;
 }
 DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {

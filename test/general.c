@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <kvstore/db_base.h>
-#include <kvstore/db_range.h>
 
 #define numberof(x) (sizeof(x) / sizeof(*(x)))
 

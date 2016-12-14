@@ -15,6 +15,8 @@ USE_LEVELDB ?= 1
 USE_ROCKSDB ?= 0
 USE_HYPER ?= 0
 USE_DEBUG ?= 1
+USE_DISTRIBUTED ?= 1
+# TODO
 
 CFLAGS += -std=c99 -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=500
 CFLAGS += -g -fno-omit-frame-pointer
@@ -75,7 +77,10 @@ WARNINGS += -Wformat=2
 SHARED_LIBS :=
 STATIC_LIBS :=
 LIBS := -lpthread
-OBJECTS := $(BUILD_DIR)/src/db_base_dynamic.o $(BUILD_DIR)/src/db_helper.o $(BUILD_DIR)/src/db_schema.o
+OBJECTS := \
+	$(BUILD_DIR)/src/db_base_dynamic.o \
+	$(BUILD_DIR)/src/db_helper.o \
+	$(BUILD_DIR)/src/db_schema.o
 
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
 
@@ -88,6 +93,8 @@ else ifeq ($(DB),leveldb)
   CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
 else ifeq ($(DB),debug)
   CFLAGS += -DDB_BASE_DEFAULT=db_base_debug
+else ifeq ($(DB),distributed)
+  CFLAGS += -DDB_BASE_DEFAULT=db_base_distributed
 else ifeq ($(DB),mdb)
   CFLAGS += -DDB_BASE_DEFAULT=db_base_mdb
 else ifndef DB
@@ -134,7 +141,15 @@ ifeq ($(USE_DEBUG),1)
   OBJECTS += $(BUILD_DIR)/src/db_base_debug.o
 endif
 
-HEADERS := $(INCLUDE_DIR)/kvstore/db_base.h $(INCLUDE_DIR)/kvstore/db_base_internal.h $(INCLUDE_DIR)/kvstore/db_schema.h
+ifeq ($(USE_DISTRIBUTED),1)
+  CFLAGS += -DDB_BASE_DISTRIBUTED
+  OBJECTS += $(BUILD_DIR)/src/db_base_distributed.o
+endif
+
+HEADERS := \
+	$(INCLUDE_DIR)/kvstore/db_base.h \
+	$(INCLUDE_DIR)/kvstore/db_base_internal.h \
+	$(INCLUDE_DIR)/kvstore/db_schema.h
 
 .PHONY: all
 all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(HEADERS)

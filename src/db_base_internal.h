@@ -63,11 +63,11 @@ struct DB_base {
 	int (*env_create)(DB_env **const out);
 	int (*env_config)(DB_env *const env, unsigned const type, void *data);
 	int (*env_open)(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
-	void (*env_close)(DB_env *const env);
+	void (*env_close)(DB_env *env);
 
 	int (*txn_begin)(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out);
-	int (*txn_commit)(DB_txn *const txn);
-	void (*txn_abort)(DB_txn *const txn);
+	int (*txn_commit)(DB_txn *txn);
+	void (*txn_abort)(DB_txn *txn);
 	void (*txn_reset)(DB_txn *const txn);
 	int (*txn_renew)(DB_txn *const txn);
 	int (*txn_upgrade)(DB_txn *const txn, unsigned const flags);
@@ -86,7 +86,7 @@ struct DB_base {
 	int (*delr)(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
 
 	int (*cursor_open)(DB_txn *const txn, DB_cursor **const out);
-	void (*cursor_close)(DB_cursor *const cursor);
+	void (*cursor_close)(DB_cursor *cursor);
 	void (*cursor_reset)(DB_cursor *const cursor);
 	int (*cursor_renew)(DB_txn *const txn, DB_cursor **const out);
 	int (*cursor_clear)(DB_cursor *const cursor);
@@ -113,6 +113,7 @@ extern DB_base const db_base_rocksdb[1];
 extern DB_base const db_base_hyper[1];
 extern DB_base const db_base_lsmdb[1];
 extern DB_base const db_base_debug[1];
+extern DB_base const db_base_distributed[1];
 
 // Helper functions
 // Use these to get a simple implementation in terms of other operations.

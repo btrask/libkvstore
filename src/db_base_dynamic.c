@@ -27,6 +27,7 @@ int db_env_create_base(char const *const basename, DB_env **const out) {
 //	if(0 == strcmp(basename, "hyper")) base = db_base_hyper;
 //	if(0 == strcmp(basename, "lsmdb")) base = db_base_lsmdb;
 	if(0 == strcmp(basename, "debug")) base = db_base_debug;
+//	if(0 == strcmp(basename, "distributed")) base = db_base_distributed;
 	if(!base) return DB_EINVAL;
 	return base->env_create(out);
 }
@@ -47,22 +48,23 @@ int db_env_open(DB_env *const env, char const *const name, unsigned const flags,
 	if(!env) return DB_EINVAL;
 	return env->isa->env_open(env, name, flags, mode);
 }
-void db_env_close(DB_env *const env) {
+void db_env_close(DB_env *env) {
 	if(!env) return;
-	env->isa->env_close(env);
+	env->isa->env_close(env); env = NULL;
 }
 
 int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
 	if(!env) return DB_EINVAL;
 	return env->isa->txn_begin(env, parent, flags, out);
 }
-int db_txn_commit(DB_txn *const txn) {
+int db_txn_commit(DB_txn *txn) {
 	if(!txn) return DB_EINVAL;
-	return txn->isa->txn_commit(txn);
+	int rc = txn->isa->txn_commit(txn); txn = NULL;
+	return rc;
 }
-void db_txn_abort(DB_txn *const txn) {
+void db_txn_abort(DB_txn *txn) {
 	if(!txn) return;
-	txn->isa->txn_abort(txn);
+	txn->isa->txn_abort(txn); txn = NULL;
 }
 void db_txn_reset(DB_txn *const txn) {
 	if(!txn) return;
@@ -127,9 +129,9 @@ int db_cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->cursor_open(txn, out);
 }
-void db_cursor_close(DB_cursor *const cursor) {
+void db_cursor_close(DB_cursor *cursor) {
 	if(!cursor) return;
-	cursor->isa->cursor_close(cursor);
+	cursor->isa->cursor_close(cursor); cursor = NULL;
 }
 void db_cursor_reset(DB_cursor *const cursor) {
 	if(!cursor) return;
