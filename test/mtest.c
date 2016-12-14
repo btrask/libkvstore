@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "db_base.h"
+#include <kvstore/db_base.h>
 
 #define E(expr) CHECK((rc = (expr)) >= 0, #expr)
 #define RES(err, expr) ((rc = expr) == (err) || (CHECK(rc >= 0, #expr), 0))

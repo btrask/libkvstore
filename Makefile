@@ -144,10 +144,10 @@ $(BUILD_DIR)/libkvstore.a: $(OBJECTS) $(STATIC_LIBS)
 	@- mkdir -p $(dir $@)
 	$(AR) rs $@ $(OBJECTS)
 
-$(BUILD_DIR)/src/%.o: $(SRC_DIR)/%.c | $(HEADERS)
+$(BUILD_DIR)/%.o: $(ROOT_DIR)/%.c | $(HEADERS)
 	@- mkdir -p $(dir $@)
-	@- mkdir -p $(dir $(BUILD_DIR)/h/src/$*.d)
-	$(CC) -c $(CFLAGS) $(WARNINGS) -MMD -MP -MF $(BUILD_DIR)/h/src/$*.d -o $@ $<
+	@- mkdir -p $(dir $(BUILD_DIR)/h/$*.d)
+	$(CC) -c $(CFLAGS) $(WARNINGS) -MMD -MP -MF $(BUILD_DIR)/h/$*.d -o $@ $<
 
 # TODO: Find files in subdirectories without using shell?
 -include $(shell find $(BUILD_DIR)/h -name "*.d")
@@ -168,10 +168,10 @@ distclean: clean
 	- $(MAKE) distclean -C $(DEPS_DIR)/snappy
 
 .PHONY: test
-test: $(BUILD_DIR)/mtest
-	$(BUILD_DIR)/mtest
+test: $(BUILD_DIR)/test/mtest
+	$(BUILD_DIR)/test/mtest
 
-$(BUILD_DIR)/mtest: $(BUILD_DIR)/src/mtest.o $(BUILD_DIR)/libkvstore.a $(STATIC_LIBS)
+$(BUILD_DIR)/test/mtest: $(BUILD_DIR)/test/mtest.o $(BUILD_DIR)/libkvstore.a $(STATIC_LIBS)
 	@- mkdir -p $(dir $@)
 	rm -rf ./testdb ./testdb-lock
 	$(CC) $(CFLAGS) $^ $(LIBS) -o $@
