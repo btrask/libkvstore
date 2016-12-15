@@ -95,13 +95,14 @@ typedef struct {
 	void *ctx;
 } DB_commit_data;
 
-#define DB_CFG_MAPSIZE 1 // size_t const *const data
-#define DB_CFG_COMPARE 2 // DB_cmp_data const *const data
-#define DB_CFG_COMMAND 3 // DB_cmd_data const *const data
-#define DB_CFG_TXNSIZE 4 // size_t const *const data
-#define DB_CFG_LOG 5 // DB_print_data const *const data
+#define DB_CFG_MAPSIZE 1 // size_t *data
+#define DB_CFG_COMPARE 2 // DB_cmp_data *data
+#define DB_CFG_COMMAND 3 // DB_cmd_data *data
+#define DB_CFG_TXNSIZE 4 // size_t *data
+#define DB_CFG_LOG 5 // DB_print_data *data
 #define DB_CFG_INNERDB 6 // DB_env *data (takes ownership)
-#define DB_CFG_COMMIT 7 // DB_commit_data const *const data
+#define DB_CFG_COMMIT 7 // DB_commit_data *data
+#define DB_CFG_KEYSIZE 8 // size_t *data (might be read-only)
 
 int db_env_create_base(char const *const basename, DB_env **const out);
 int db_env_create_custom(DB_base const *const base, DB_env **const out);

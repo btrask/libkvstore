@@ -60,27 +60,21 @@ cleanup:
 DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
 	switch(type) {
-	// TODO
+	case DB_CFG_LOG: *(DB_print_data *)data = *env->log; return 0;
+	case DB_CFG_INNERDB: *(DB_env **)data = env->env; return 0;
 	default:
 		return db_env_get_config(env->env, type, data);
 	}
 }
 DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
-	// TODO: We should have a way of swapping out the inner env.
-	// And also a way of getting it to configure directly?
-	// Ownership becomes a little bit complex...
 	switch(type) {
-	case DB_CFG_LOG: {
-		DB_print_data const *const x = data;
-		*env->log = *x;
-		return 0;
-	} case DB_CFG_INNERDB: {
-		DB_env *const x = data;
+	case DB_CFG_LOG: *env->log = *(DB_print_data *)data; return 0;
+	case DB_CFG_INNERDB:
 		db_env_close(env->env);
-		env->env = x;
+		env->env = data;
 		return 0;
-	} default:
+	default:
 		return db_env_set_config(env->env, type, data);
 	}
 }

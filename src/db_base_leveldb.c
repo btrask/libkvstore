@@ -348,7 +348,13 @@ DB_FN int db__env_create(DB_env **const out) {
 	return 0;
 }
 DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
-	return DB_ENOTSUP; // TODO
+	if(!env) return DB_EINVAL;
+	switch(type) {
+	case DB_CFG_COMMAND: *(DB_cmd_data *)data = *env->cmd; return 0;
+	case DB_CFG_KEYSIZE: return db_env_get_config(env->tmpenv, type, data);
+	case DB_CFG_TXNSIZE: return db_env_get_config(env->tmpenv, DB_CFG_MAPSIZE, data);
+	default: return DB_ENOTSUP;
+	}
 }
 DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
@@ -356,7 +362,7 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 	case DB_CFG_MAPSIZE: return 0;
 	case DB_CFG_COMPARE: return DB_ENOTSUP; //*env->cmp = *(DB_cmp_data *)data; return 0;
 	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
-	case DB_CFG_TXNSIZE: return DB_ENOTSUP;
+	case DB_CFG_TXNSIZE: return db_env_set_config(env->tmpenv, DB_CFG_MAPSIZE, data);
 	default: return DB_ENOTSUP;
 	}
 }

@@ -51,7 +51,20 @@ cleanup:
 	return rc;
 }
 DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
-	return DB_ENOTSUP; // TODO
+	if(!env) return DB_EINVAL;
+	switch(type) {
+	case DB_CFG_MAPSIZE: {
+		MDB_envinfo x[1];
+		int rc = mdberr(mdb_env_info(env->env, x));
+		if(rc < 0) return rc;
+		*(size_t *)data = x->me_mapsize;
+		return 0;
+	} case DB_CFG_COMMAND: *(DB_cmd_data *)data = *env->cmd; return 0;
+	case DB_CFG_KEYSIZE:
+		*(size_t *)data = mdb_env_get_maxkeysize(env->env);
+		return 0;
+	default: return DB_ENOTSUP;
+	}
 }
 DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
@@ -61,7 +74,6 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		return mdberr(mdb_env_set_mapsize(env->env, *sp));
 	} case DB_CFG_COMPARE: return DB_ENOTSUP; //*env->cmp = *(DB_cmp_data *)data; return 0;
 	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
-	case DB_CFG_TXNSIZE: return 0;
 	default: return DB_ENOTSUP;
 	}
 }
