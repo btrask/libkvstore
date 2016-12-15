@@ -191,7 +191,6 @@ DB_FN int db__txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *co
 DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
-	if(txn->parent) return db_txn_cursor(txn->parent, out);
 	if(!txn->cursor) {
 		int rc = db_cursor_open(txn, &txn->cursor);
 		if(rc < 0) return rc;
