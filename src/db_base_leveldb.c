@@ -188,18 +188,6 @@ static int ldb_cursor_clear(LDB_cursor *const cursor) {
 	ldb_cursor_storage_invalidate(cursor);
 	return 0;
 }
-static int ldb_cursor_renew(leveldb_t *const db, leveldb_readoptions_t *const ropts, DB_cmp_data const *const cmp, LDB_cursor **const out) {
-	if(!out) return DB_EINVAL;
-	if(!*out) return ldb_cursor_open(db, ropts, cmp, out);
-	LDB_cursor *const cursor = *out;
-	leveldb_iter_destroy(cursor->iter); cursor->iter = NULL;
-	cursor->iter = leveldb_create_iterator(db, ropts);
-	if(!cursor->iter) return DB_ENOMEM;
-	*cursor->cmp = *cmp;
-	cursor->valid = false;
-	ldb_cursor_storage_invalidate(cursor);
-	return 0;
-}
 static int ldb_cursor_cmp(LDB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor);
 //	DB_cmp_func_bad cmp = cursor->cmp->fn;
@@ -441,11 +429,13 @@ DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const 
 	txn->ropts = leveldb_readoptions_create();
 	if(!txn->ropts) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
-	txn->snapshot = NULL;
 
+	txn->snapshot = NULL;
 	if(DB_RDONLY & flags) {
-		rc = db_txn_renew(txn);
+		txn->snapshot = leveldb_create_snapshot(txn->env->db);
+		if(!txn->snapshot) rc = DB_ENOMEM;
 		if(rc < 0) goto cleanup;
+		leveldb_readoptions_set_snapshot(txn->ropts, txn->snapshot);
 	}
 	*out = txn; txn = NULL;
 cleanup:
@@ -521,24 +511,6 @@ DB_FN void db__txn_abort(DB_txn *txn) {
 	assert_zeroed(txn, 1);
 	free(txn); txn = NULL;
 }
-DB_FN void db__txn_reset(DB_txn *const txn) {
-	if(!txn) return;
-	assert(txn->flags & DB_RDONLY);
-	if(txn->snapshot) {
-		leveldb_readoptions_set_snapshot(txn->ropts, NULL);
-		leveldb_release_snapshot(txn->env->db, txn->snapshot); txn->snapshot = NULL;
-	}
-}
-DB_FN int db__txn_renew(DB_txn *const txn) {
-	// TODO: If renew fails, does the user have to explicitly abort?
-	if(!txn) return DB_EINVAL;
-	assert(txn->flags & DB_RDONLY);
-	assert(!txn->snapshot);
-	txn->snapshot = leveldb_create_snapshot(txn->env->db);
-	if(!txn->snapshot) return DB_ENOMEM;
-	leveldb_readoptions_set_snapshot(txn->ropts, txn->snapshot);
-	return 0;
-}
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	return DB_ENOTSUP;
@@ -610,43 +582,35 @@ DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
+	int rc = 0;
 	DB_cursor *cursor = calloc(1, sizeof(struct DB_cursor));
-	if(!cursor) return DB_ENOMEM;
+	if(!cursor) rc = DB_ENOMEM;
+	if(rc < 0) goto cleanup;
 	cursor->isa = db_base_leveldb;
+
 	cursor->txn = txn;
+	cursor->state = S_INVALID;
 	if(txn->tmptxn) {
-		int rc = db_cursor_open(txn->tmptxn, &cursor->pending);
-		if(rc < 0) {
-			db_cursor_close(cursor); cursor = NULL;
-			return rc;
-		}
+		rc = db_cursor_open(txn->tmptxn, &cursor->pending);
+		if(rc < 0) goto cleanup;
 	}
-	*out = cursor;
-	return db_cursor_renew(txn, out);
+	rc = ldb_cursor_open(txn->env->db, txn->ropts, txn->env->cmp, &cursor->persist);
+	if(rc < 0) goto cleanup;
+
+	*out = cursor; cursor = NULL;
+cleanup:
+	db_cursor_close(cursor); cursor = NULL;
+	return rc;
 }
 DB_FN void db__cursor_close(DB_cursor *cursor) {
 	if(!cursor) return;
 	db_cursor_close(cursor->pending); cursor->pending = NULL;
-	db_cursor_reset(cursor);
+	ldb_cursor_close(cursor->persist); cursor->persist = NULL;
 	cursor->isa = NULL;
-	assert_zeroed(cursor, 1);
-	free(cursor); cursor = NULL;
-}
-DB_FN void db__cursor_reset(DB_cursor *const cursor) {
-	if(!cursor) return;
 	cursor->txn = NULL;
 	cursor->state = S_INVALID;
-	ldb_cursor_close(cursor->persist); cursor->persist = NULL;
-}
-DB_FN int db__cursor_renew(DB_txn *const txn, DB_cursor **const out) {
-	if(!out) return DB_EINVAL;
-	if(!*out) return db_cursor_open(txn, out);
-	DB_cursor *const cursor = *out;
-	cursor->txn = txn;
-	cursor->state = S_INVALID;
-	int rc = ldb_cursor_renew(txn->env->db, txn->ropts, txn->env->cmp, &cursor->persist);
-	if(rc < 0) return rc;
-	return 0;
+	assert_zeroed(cursor, 1);
+	free(cursor); cursor = NULL;
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;

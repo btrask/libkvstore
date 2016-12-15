@@ -18,8 +18,6 @@ DB_base const db_base_##_name[1] = {{ \
 	.txn_begin = db__txn_begin, \
 	.txn_commit = db__txn_commit, \
 	.txn_abort = db__txn_abort, \
-	.txn_reset = db__txn_reset, \
-	.txn_renew = db__txn_renew, \
 	.txn_upgrade = db__txn_upgrade, \
 	.txn_env = db__txn_env, \
 	.txn_parent = db__txn_parent, \
@@ -37,8 +35,6 @@ DB_base const db_base_##_name[1] = {{ \
 	\
 	.cursor_open = db__cursor_open, \
 	.cursor_close = db__cursor_close, \
-	.cursor_reset = db__cursor_reset, \
-	.cursor_renew = db__cursor_renew, \
 	.cursor_clear = db__cursor_clear, \
 	.cursor_txn = db__cursor_txn, \
 	.cursor_cmp = db__cursor_cmp, \
@@ -70,8 +66,6 @@ struct DB_base {
 	int (*txn_begin)(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out);
 	int (*txn_commit)(DB_txn *txn);
 	void (*txn_abort)(DB_txn *txn);
-	void (*txn_reset)(DB_txn *const txn);
-	int (*txn_renew)(DB_txn *const txn);
 	int (*txn_upgrade)(DB_txn *const txn, unsigned const flags);
 	int (*txn_env)(DB_txn *const txn, DB_env **const out);
 	int (*txn_parent)(DB_txn *const txn, DB_txn **const out);
@@ -89,8 +83,6 @@ struct DB_base {
 
 	int (*cursor_open)(DB_txn *const txn, DB_cursor **const out);
 	void (*cursor_close)(DB_cursor *cursor);
-	void (*cursor_reset)(DB_cursor *const cursor);
-	int (*cursor_renew)(DB_txn *const txn, DB_cursor **const out);
 	int (*cursor_clear)(DB_cursor *const cursor);
 	int (*cursor_txn)(DB_cursor *const cursor, DB_txn **const out);
 	int (*cursor_cmp)(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b);

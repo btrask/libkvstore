@@ -138,18 +138,6 @@ DB_FN void db__txn_abort(DB_txn *txn) {
 	txn->txn = NULL;
 	free(txn); txn = NULL;
 }
-DB_FN void db__txn_reset(DB_txn *const txn) {
-	if(!txn) return;
-	LOG(txn->env, 0);
-	db_txn_reset(txn->txn);
-}
-DB_FN int db__txn_renew(DB_txn *const txn) {
-	if(!txn) return DB_EINVAL;
-	db_cursor_close(txn->cursor); txn->cursor = NULL;
-	int rc = db_txn_renew(txn->txn);
-	LOG(txn->env, rc);
-	return rc;
-}
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	int rc = db_txn_upgrade(txn->txn, flags);
@@ -181,7 +169,7 @@ DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
 	int rc = 0;
-	if(!txn->cursor) rc = db_cursor_renew(txn, &txn->cursor);
+	if(!txn->cursor) rc = db_cursor_open(txn, &txn->cursor);
 	*out = txn->cursor;
 	LOG(txn->env, rc);
 	return rc;
@@ -249,25 +237,6 @@ DB_FN void db__cursor_close(DB_cursor *cursor) {
 	cursor->isa = NULL;
 	cursor->txn = NULL;
 	free(cursor);
-}
-DB_FN void db__cursor_reset(DB_cursor *const cursor) {
-	if(!cursor) return;
-	LOG(cursor->txn->env, 0);
-	// Do nothing?
-}
-DB_FN int db__cursor_renew(DB_txn *const txn, DB_cursor **const out) {
-	if(!txn) return DB_EINVAL;
-	if(!out) return DB_EINVAL;
-	int rc = 0;
-	if(*out) {
-		out[0]->txn = txn;
-		rc = db_cursor_renew(txn->txn, &out[0]->cursor);
-		LOG(txn->env, rc);
-		return rc;
-	}
-	rc = db_cursor_open(txn, out);
-	LOG(txn->env, rc);
-	return rc;
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;

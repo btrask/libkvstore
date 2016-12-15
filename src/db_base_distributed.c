@@ -162,18 +162,6 @@ DB_FN void db__txn_abort(DB_txn *txn) {
 	txn->parent = NULL;
 	free(txn); txn = NULL;
 }
-DB_FN void db__txn_reset(DB_txn *const txn) {
-	if(!txn) return;
-	// TODO WTF
-	db_txn_reset(txn->main);
-	db_txn_reset(txn->temp);
-}
-DB_FN int db__txn_renew(DB_txn *const txn) {
-	if(!txn) return DB_EINVAL;
-	// TODO WTF
-	db_cursor_close(txn->cursor); txn->cursor = NULL;
-	return db_txn_renew(txn->temp);
-}
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	return DB_ENOTSUP;
@@ -263,24 +251,6 @@ DB_FN void db__cursor_close(DB_cursor *cursor) {
 	cursor->txn = NULL;
 	cursor->state = 0;
 	free(cursor); cursor = NULL;
-}
-DB_FN void db__cursor_reset(DB_cursor *const cursor) {
-	if(!cursor) return;
-	// TODO WTF
-}
-DB_FN int db__cursor_renew(DB_txn *const txn, DB_cursor **const out) {
-	if(!txn) return DB_EINVAL;
-	if(!out) return DB_EINVAL;
-	if(!*out) return db_cursor_open(txn, out);
-	DB_cursor *const cursor = *out;
-	int rc = 0;
-	cursor->txn = txn;
-	cursor->state = S_INVALID;
-	rc = db_cursor_renew(txn->main, &cursor->main);
-	if(rc < 0) return rc;
-	rc = db_cursor_renew(txn->temp, &cursor->temp);
-	if(rc < 0) return rc;
-	return 0;
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;

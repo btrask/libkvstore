@@ -70,14 +70,6 @@ void db_txn_abort(DB_txn *txn) {
 	if(!txn) return;
 	txn->isa->txn_abort(txn); txn = NULL;
 }
-void db_txn_reset(DB_txn *const txn) {
-	if(!txn) return;
-	txn->isa->txn_reset(txn);
-}
-int db_txn_renew(DB_txn *const txn) {
-	if(!txn) return DB_EINVAL;
-	return txn->isa->txn_renew(txn);
-}
 int db_txn_upgrade(DB_txn *const txn, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	return txn->isa->txn_upgrade(txn, flags);
@@ -136,14 +128,6 @@ int db_cursor_open(DB_txn *const txn, DB_cursor **const out) {
 void db_cursor_close(DB_cursor *cursor) {
 	if(!cursor) return;
 	cursor->isa->cursor_close(cursor); cursor = NULL;
-}
-void db_cursor_reset(DB_cursor *const cursor) {
-	if(!cursor) return;
-	cursor->isa->cursor_reset(cursor);
-}
-int db_cursor_renew(DB_txn *const txn, DB_cursor **const out) {
-	if(!txn) return DB_EINVAL;
-	return txn->isa->cursor_renew(txn, out);
 }
 int db_cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;

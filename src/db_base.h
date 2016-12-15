@@ -115,8 +115,6 @@ void db_env_close(DB_env *env);
 int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out);
 int db_txn_commit(DB_txn *txn);
 void db_txn_abort(DB_txn *txn);
-void db_txn_reset(DB_txn *const txn);
-int db_txn_renew(DB_txn *const txn);
 int db_txn_upgrade(DB_txn *const txn, unsigned const flags);
 int db_txn_env(DB_txn *const txn, DB_env **const out);
 int db_txn_parent(DB_txn *const txn, DB_txn **const out);
@@ -140,8 +138,6 @@ int db_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out)
 
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out);
 void db_cursor_close(DB_cursor *cursor);
-void db_cursor_reset(DB_cursor *const cursor);
-int db_cursor_renew(DB_txn *const txn, DB_cursor **const out);
 int db_cursor_clear(DB_cursor *const cursor);
 int db_cursor_txn(DB_cursor *const cursor, DB_txn **const out);
 int db_cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b);

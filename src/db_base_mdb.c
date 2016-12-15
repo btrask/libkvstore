@@ -134,20 +134,6 @@ DB_FN void db__txn_abort(DB_txn *txn) {
 	txn->parent = NULL;
 	free(txn); txn = NULL;
 }
-DB_FN void db__txn_reset(DB_txn *const txn) {
-	if(!txn) return;
-	mdb_txn_reset(txn->txn);
-}
-DB_FN int db__txn_renew(DB_txn *const txn) {
-	if(!txn) return DB_EINVAL;
-	int rc = mdberr(mdb_txn_renew(txn->txn));
-	if(rc < 0) return rc;
-	if(txn->cursor) {
-		rc = db_cursor_renew(txn, &txn->cursor);
-		if(rc < 0) return rc;
-	}
-	return 0;
-}
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	return DB_ENOTSUP;
@@ -232,18 +218,6 @@ DB_FN void db__cursor_close(DB_cursor *cursor) {
 	cursor->isa = NULL;
 	cursor->txn = NULL;
 	free(cursor); cursor = NULL;
-}
-DB_FN void db__cursor_reset(DB_cursor *const cursor) {
-	// Do nothing.
-}
-DB_FN int db__cursor_renew(DB_txn *const txn, DB_cursor **const out) {
-	if(!txn) return DB_EINVAL;
-	if(!out) return DB_EINVAL;
-	if(*out) {
-		out[0]->txn = txn;
-		return mdberr(mdb_cursor_renew(txn->txn, out[0]->cursor));
-	}
-	return db_cursor_open(txn, out);
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
