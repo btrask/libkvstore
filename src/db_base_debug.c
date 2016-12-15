@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "db_base_internal.h"
+#include "common.h"
 
 struct DB_env {
 	DB_base const *isa;
@@ -94,6 +95,7 @@ DB_FN void db__env_close(DB_env *env) {
 	LOG(env, 0);
 	db_env_close(env->env); env->env = NULL;
 	env->isa = NULL;
+	assert_zeroed(env, 1);
 	free(env); env = NULL;
 }
 
@@ -146,6 +148,7 @@ DB_FN void db__txn_abort(DB_txn *txn) {
 	txn->isa = NULL;
 	txn->env = NULL;
 	txn->parent = NULL;
+	assert_zeroed(txn, 1);
 	free(txn); txn = NULL;
 }
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
@@ -246,6 +249,7 @@ DB_FN void db__cursor_close(DB_cursor *cursor) {
 	db_cursor_close(cursor->cursor); cursor->cursor = NULL;
 	cursor->isa = NULL;
 	cursor->txn = NULL;
+	assert_zeroed(cursor, 1);
 	free(cursor);
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {

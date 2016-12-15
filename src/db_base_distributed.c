@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include "liblmdb/lmdb.h"
 #include "db_base_internal.h"
+#include "common.h"
 
 typedef enum {
 	S_INVALID = 0,
@@ -99,6 +100,7 @@ DB_FN void db__env_close(DB_env *env) {
 	db_env_close(env->main); env->main = NULL;
 	db_env_close(env->temp); env->temp = NULL;
 	env->isa = NULL;
+	assert_zeroed(env, 1);
 	free(env); env = NULL;
 }
 
@@ -163,6 +165,7 @@ DB_FN void db__txn_abort(DB_txn *txn) {
 	txn->isa = NULL;
 	txn->env = NULL;
 	txn->parent = NULL;
+	assert_zeroed(txn, 1);
 	free(txn); txn = NULL;
 }
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
@@ -252,6 +255,7 @@ DB_FN void db__cursor_close(DB_cursor *cursor) {
 	cursor->isa = NULL;
 	cursor->txn = NULL;
 	cursor->state = 0;
+	assert_zeroed(cursor, 1);
 	free(cursor); cursor = NULL;
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
