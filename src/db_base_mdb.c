@@ -104,7 +104,7 @@ DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const 
 	if(!out) return DB_EINVAL;
 	if(parent && parent->child) return DB_BAD_TXN;
 	int rc = 0;
-	DB_txn *txn = malloc(sizeof(struct DB_txn));
+	DB_txn *txn = calloc(1, sizeof(struct DB_txn));
 	if(!txn) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
 	txn->isa = db_base_mdb;
