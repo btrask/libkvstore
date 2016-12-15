@@ -693,9 +693,12 @@ DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val 
 	} else if(S_EQUAL == cursor->state || S_PENDING == cursor->state) {
 		int rc = db_cursor_current(cursor->pending, key, data);
 		if(DB_EINVAL == rc) return DB_NOTFOUND;
-		assert(KEY_TOMBSTONE != tombstone_get(data));
-		tombstone_trim(data);
-		return rc;
+		if(rc < 0) return rc;
+		if(data) {
+			assert(KEY_TOMBSTONE != tombstone_get(data));
+			tombstone_trim(data);
+		}
+		return 0;
 	} else if(S_INVALID == cursor->state) {
 		return DB_NOTFOUND;
 	} else {
