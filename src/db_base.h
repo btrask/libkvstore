@@ -136,6 +136,9 @@ int db_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len);
 int db_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
 int db_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
 
+// Note: Currently, you must manually close all cursors before
+// committing/aborting their transactions. In the future, any cursors
+// remaining open may be closed automatically.
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out);
 void db_cursor_close(DB_cursor *cursor);
 int db_cursor_clear(DB_cursor *const cursor);
