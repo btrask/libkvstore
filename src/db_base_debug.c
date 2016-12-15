@@ -16,6 +16,7 @@ struct DB_txn {
 	DB_base const *isa;
 	DB_env *env;
 	DB_txn *parent;
+	DB_txn *child;
 	DB_txn *txn;
 	DB_cursor *cursor;
 };
@@ -99,6 +100,7 @@ DB_FN void db__env_close(DB_env *env) {
 DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
 	if(!env) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
+	if(parent && parent->child) return DB_BAD_TXN;
 	int rc = 0;
 	DB_txn *txn = calloc(1, sizeof(DB_txn));
 	if(!txn) rc = DB_ENOMEM;
@@ -109,6 +111,9 @@ DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const 
 	if(rc < 0) goto cleanup;
 	txn->env = env;
 	txn->parent = parent;
+	txn->child = NULL;
+
+	if(parent) parent->child = txn;
 	*out = txn; txn = NULL;
 cleanup:
 	db_txn_abort(txn); txn = NULL;
@@ -117,25 +122,30 @@ cleanup:
 }
 DB_FN int db__txn_commit(DB_txn *txn) {
 	if(!txn) return DB_EINVAL;
-	LOG(txn->env, 0);
-	db_cursor_close(txn->cursor); txn->cursor = NULL;
-	int rc = db_txn_commit(txn->txn);
-	txn->isa = NULL;
-	txn->env = NULL;
-	txn->parent = NULL;
-	txn->txn = NULL;
-	free(txn); txn = NULL;
+	int rc = 0;
+	if(txn->child) {
+		rc = db_txn_commit(txn->child); txn->child = NULL;
+		if(rc < 0) goto cleanup;
+	}
+	rc = db_txn_commit(txn->txn); txn->txn = NULL;
+	if(rc < 0) goto cleanup;
+cleanup:
+	LOG(txn->env, rc);
+	db_txn_abort(txn); txn = NULL;
 	return rc;
 }
 DB_FN void db__txn_abort(DB_txn *txn) {
 	if(!txn) return;
-	LOG(txn->env, 0);
+	if(txn->child) {
+		db_txn_abort(txn->child); txn->child = NULL;
+	}
+	if(txn->txn) LOG(txn->env, 0); // Don't log abort during commit.
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
-	db_txn_abort(txn->txn);
+	db_txn_abort(txn->txn); txn->txn = NULL;
+	if(txn->parent) txn->parent->child = NULL;
 	txn->isa = NULL;
 	txn->env = NULL;
 	txn->parent = NULL;
-	txn->txn = NULL;
 	free(txn); txn = NULL;
 }
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {

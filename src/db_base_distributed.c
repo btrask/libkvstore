@@ -105,22 +105,22 @@ DB_FN void db__env_close(DB_env *env) {
 DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
 	if(!env) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
-	DB_txn *txn = NULL;
+	if(parent && parent->child) return DB_BAD_TXN;
 	int rc = 0;
-
-	txn = calloc(1, sizeof(DB_txn));
+	DB_txn *txn = calloc(1, sizeof(DB_txn));
 	if(!txn) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
 	txn->isa = db_base_distributed;
 	txn->env = env;
 	txn->parent = parent;
+	txn->child = NULL;
 
-	if(!parent) {
-		rc = db_txn_begin(env->main, NULL, DB_RDONLY, &txn->main);
+	rc = db_txn_begin(env->main, parent ? parent->main : NULL, DB_RDONLY, &txn->main);
+	if(rc < 0) goto cleanup;
+	if(!(DB_RDONLY & flags)) {
+		rc = db_txn_begin(env->temp, parent ? parent->temp : NULL, flags, &txn->temp);
 		if(rc < 0) goto cleanup;
 	}
-	rc = db_txn_begin(env->temp, parent ? parent->temp : NULL, flags, &txn->temp);
-	if(rc < 0) goto cleanup;
 
 	if(parent) parent->child = txn;
 	*out = txn; txn = NULL;
@@ -130,21 +130,23 @@ cleanup:
 }
 DB_FN int db__txn_commit(DB_txn *txn) {
 	if(!txn) return DB_EINVAL;
-	int rc;
+	int rc = 0;
+	if(!txn->temp) goto cleanup; // DB_RDONLY
 	if(txn->child) {
 		rc = db_txn_commit(txn->child); txn->child = NULL;
 		if(rc < 0) goto cleanup;
 	}
+
 	if(txn->parent) {
 		rc = db_txn_commit(txn->temp); txn->temp = NULL;
-		if(rc < 0) goto cleanup;
-	} else {
-		if(!txn->env->commit->fn) rc = DB_PANIC;
-		if(rc < 0) goto cleanup;
-		// TODO: How do we report puts and dels to the cb?
-		rc = txn->env->commit->fn(txn->env->commit->ctx, txn->env, NULL);
-		if(rc < 0) goto cleanup;
+		goto cleanup;
 	}
+
+	if(!txn->env->commit->fn) rc = DB_PANIC;
+	if(rc < 0) goto cleanup;
+	// TODO: How do we report puts and dels to the cb?
+	rc = txn->env->commit->fn(txn->env->commit->ctx, txn->env, NULL);
+	if(rc < 0) goto cleanup;
 cleanup:
 	db_txn_abort(txn); txn = NULL;
 	return rc;
@@ -157,6 +159,7 @@ DB_FN void db__txn_abort(DB_txn *txn) {
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
 	db_txn_abort(txn->main); txn->main = NULL;
 	db_txn_abort(txn->temp); txn->temp = NULL;
+	if(txn->parent) txn->parent->child = NULL;
 	txn->isa = NULL;
 	txn->env = NULL;
 	txn->parent = NULL;

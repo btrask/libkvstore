@@ -49,10 +49,11 @@ struct DB_txn {
 	DB_base const *isa;
 	DB_env *env;
 	DB_txn *parent;
+	DB_txn *child;
 	unsigned flags;
 	leveldb_readoptions_t *ropts;
-	leveldb_snapshot_t const *snapshot;
-	DB_txn *tmptxn;
+	leveldb_snapshot_t const *snapshot; // For DB_RDONLY
+	DB_txn *tmptxn; // For DB_RDWR
 	DB_cursor *cursor;
 };
 struct DB_cursor {
@@ -375,7 +376,11 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 
 	char tmppath[512]; // TODO
 	if(snprintf(tmppath, sizeof(tmppath), "%s/tmp.mdb", name) < 0) return -1;
-	rc = db_env_open(env->tmpenv, tmppath, MDB_WRITEMAP, 0600);
+
+	// Notes on flags:
+	// MDB_NOSYNC serves no point, since temp txns are never committed.
+	// MDB_WRITEMAP unfortunately doesn't work with nested txns.
+	rc = db_env_open(env->tmpenv, tmppath, 0, 0600);
 	if(rc < 0) return rc;
 	(void)unlink(tmppath);
 
@@ -412,31 +417,33 @@ DB_FN void db__env_close(DB_env *env) {
 DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
 	if(!env) return DB_EINVAL;
 	if(!out) return DB_EINVAL;
+	if(parent && parent->child) return DB_BAD_TXN;
 	int rc = 0;
 	DB_txn *txn = calloc(1, sizeof(struct DB_txn));
 	if(!txn) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
 	txn->isa = db_base_leveldb;
-
-	if(!(DB_RDONLY & flags)) {
-		rc = db_txn_begin(env->tmpenv, parent ? parent->tmptxn : NULL, flags, &txn->tmptxn);
-		if(rc < 0) goto cleanup;
-	}
-
 	txn->env = env;
 	txn->parent = parent;
+	txn->child = NULL;
 	txn->flags = flags;
 	txn->ropts = leveldb_readoptions_create();
 	if(!txn->ropts) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
 
-	txn->snapshot = NULL;
 	if(DB_RDONLY & flags) {
+		txn->tmptxn = NULL;
 		txn->snapshot = leveldb_create_snapshot(txn->env->db);
 		if(!txn->snapshot) rc = DB_ENOMEM;
 		if(rc < 0) goto cleanup;
 		leveldb_readoptions_set_snapshot(txn->ropts, txn->snapshot);
+	} else {
+		rc = db_txn_begin(env->tmpenv, parent ? parent->tmptxn : NULL, flags, &txn->tmptxn);
+		if(rc < 0) goto cleanup;
+		txn->snapshot = NULL;
 	}
+
+	if(parent) parent->child = txn;
 	*out = txn; txn = NULL;
 cleanup:
 	db_txn_abort(txn); txn = NULL;
@@ -444,28 +451,27 @@ cleanup:
 }
 DB_FN int db__txn_commit(DB_txn *txn) {
 	if(!txn) return DB_EINVAL;
-	if(DB_RDONLY & txn->flags) {
-		db_txn_abort(txn); txn = NULL;
-		return 0;
+	leveldb_writebatch_t *batch = NULL;
+	DB_cursor *cursor = NULL;
+	DB_val key[1], data[1];
+	int rc = 0;
+	if(DB_RDONLY & txn->flags) goto cleanup;
+	assert(txn->tmptxn);
+	if(txn->child) {
+		rc = db_txn_commit(txn->child); txn->child = NULL;
+		if(rc < 0) goto cleanup;
 	}
 
 	if(txn->parent) {
-		assert(0); // TODO
+		rc = db_txn_commit(txn->tmptxn); txn->tmptxn = NULL;
+		goto cleanup;
 	}
 
-	leveldb_writebatch_t *batch = leveldb_writebatch_create();
-	if(!batch) {
-		db_txn_abort(txn); txn = NULL;
-		return DB_ENOMEM;
-	}
-	assert(txn->tmptxn);
-	DB_cursor *cursor = NULL;
-	int rc = db_txn_cursor(txn->tmptxn, &cursor);
-	if(rc < 0) {
-		db_txn_abort(txn); txn = NULL;
-		return rc;
-	}
-	DB_val key[1], data[1];
+	rc = db_txn_cursor(txn->tmptxn, &cursor);
+	if(rc < 0) goto cleanup;
+	batch = leveldb_writebatch_create();
+	if(!batch) rc = DB_ENOMEM;
+	if(rc < 0) goto cleanup;
 	rc = db_cursor_first(cursor, key, data, +1);
 	for(; rc >= 0; rc = db_cursor_next(cursor, key, data, +1)) {
 		switch(tombstone_get(data)) {
@@ -482,21 +488,26 @@ DB_FN int db__txn_commit(DB_txn *txn) {
 		default: assert(0);
 		}
 	}
-	cursor = NULL;
+	if(DB_NOTFOUND == rc) rc = 0;
+	if(rc < 0) goto cleanup;
 
 	char *err = NULL;
 	leveldb_write(txn->env->db, txn->env->wopts, batch, &err);
 	leveldb_free(err);
-	leveldb_writebatch_destroy(batch);
-	if(err) {
-		db_txn_abort(txn); txn = NULL;
-		return -1; // TODO
-	}
+	if(err) rc = DB_EIO; // TODO
+	if(rc < 0) goto cleanup;
+
+cleanup:
+	leveldb_writebatch_destroy(batch); batch = NULL;
+	cursor = NULL;
 	db_txn_abort(txn); txn = NULL;
 	return 0;
 }
 DB_FN void db__txn_abort(DB_txn *txn) {
 	if(!txn) return;
+	if(txn->child) {
+		db_txn_abort(txn->child); txn->child = NULL;
+	}
 	if(txn->snapshot) {
 		leveldb_readoptions_set_snapshot(txn->ropts, NULL);
 		leveldb_release_snapshot(txn->env->db, txn->snapshot); txn->snapshot = NULL;
@@ -504,6 +515,7 @@ DB_FN void db__txn_abort(DB_txn *txn) {
 	leveldb_readoptions_destroy(txn->ropts); txn->ropts = NULL;
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
 	db_txn_abort(txn->tmptxn); txn->tmptxn = NULL;
+	if(txn->parent) txn->parent->child = NULL;
 	txn->env = NULL;
 	txn->parent = NULL;
 	txn->flags = 0;
