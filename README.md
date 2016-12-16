@@ -37,7 +37,16 @@ Possible future back-ends:
 - [SQLite?](https://www.sqlite.org/)
 - [SQLite4 LSM?](https://www.sqlite.org/src4/doc/trunk/www/lsmusr.wiki)
 
-To build with a given back-end, use e.g. `DB=leveldb make`. You may need to `make clean` when switching. Use `make test` to test.
+Building
+--------
+
+```sh
+./configure
+make
+sudo make install
+```
+
+You can change the default back-end with `DB=leveldb make` (but this is overridden if a specific back-end is named at run-time). Use `make test` to test.
 
 API
 ---
@@ -46,6 +55,7 @@ Please refer to the [LMDB documentation](http://lmdb.tech/doc/group__mdb.html) f
 
 Notable differences from LMDB's API:
 
+- Use `db_env_create_base` to create a database environment with a particular named back-end, or `db_env_create` to use the default.
 - `mdb_cursor_get` is split into several functions:
 	- `db_cursor_current`: returns key and value at the cursor's current location.
 	- `db_cursor_seek`: seeks to key. Direction can be positive (`>=`), negative (`<=`), or 0 (`==`).
