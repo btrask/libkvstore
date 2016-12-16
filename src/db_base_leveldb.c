@@ -469,6 +469,7 @@ DB_FN int db__txn_commit(DB_txn *txn) {
 	}
 
 	if(txn->parent) {
+		db_cursor_close(txn->cursor); txn->cursor = NULL;
 		rc = db_txn_commit(txn->tmptxn); txn->tmptxn = NULL;
 		goto cleanup;
 	}

@@ -123,6 +123,7 @@ DB_FN int db__txn_commit(DB_txn *txn) {
 		rc = db_txn_commit(txn->child); txn->child = NULL;
 		if(rc < 0) goto cleanup;
 	}
+	db_cursor_close(txn->cursor); txn->cursor = NULL;
 	rc = db_txn_commit(txn->txn); txn->txn = NULL;
 	if(rc < 0) goto cleanup;
 cleanup:
