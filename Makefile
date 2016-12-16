@@ -19,7 +19,7 @@ ROOT_DIR := .
 BUILD_DIR := $(ROOT_DIR)/build
 SRC_DIR := $(ROOT_DIR)/src
 DEPS_DIR := $(ROOT_DIR)/deps
-INCLUDE_DIR := $(ROOT_DIR)/include
+INCLUDE_DIR := $(BUILD_DIR)/include
 
 CFLAGS += -std=c99 -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=500
 CFLAGS += -g -fno-omit-frame-pointer
@@ -181,7 +181,6 @@ $(INCLUDE_DIR)/kvstore/%.h: $(SRC_DIR)/%.h
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -rf $(INCLUDE_DIR)
 	rm -rf ./testdb ./testdb-lock
 
 .PHONY: distclean
