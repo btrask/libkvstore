@@ -1,6 +1,17 @@
 # Copyright 2016 Ben Trask
 # MIT licensed (see LICENSE for details)
 
+USE_MDB ?= 1
+USE_LEVELDB ?= 1
+USE_ROCKSDB ?= 0
+USE_HYPER ?= 0
+USE_DEBUG ?= 1
+USE_DISTRIBUTED ?= 1
+# TODO: Distributed back-end still very incomplete
+
+DESTDIR ?=
+PREFIX ?= /usr/local
+
 .SUFFIXES:
 .SECONDARY:
 
@@ -9,14 +20,6 @@ BUILD_DIR := $(ROOT_DIR)/build
 SRC_DIR := $(ROOT_DIR)/src
 DEPS_DIR := $(ROOT_DIR)/deps
 INCLUDE_DIR := $(ROOT_DIR)/include
-
-USE_MDB ?= 1
-USE_LEVELDB ?= 1
-USE_ROCKSDB ?= 0
-USE_HYPER ?= 0
-USE_DEBUG ?= 1
-USE_DISTRIBUTED ?= 1
-# TODO
 
 CFLAGS += -std=c99 -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=500
 CFLAGS += -g -fno-omit-frame-pointer
@@ -200,6 +203,24 @@ test: mtest.run general.run
 $(BUILD_DIR)/test/%: $(BUILD_DIR)/test/%.o $(BUILD_DIR)/libkvstore.a $(STATIC_LIBS)
 	@- mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $^ $(LIBS) -o $@
+
+$(DESTDIR)$(PREFIX)/include/%: $(INCLUDE_DIR)/%
+	@- mkdir -p $(dir $@)
+	cp $^ $@
+
+$(DESTDIR)$(PREFIX)/lib/%: $(BUILD_DIR)/%
+	@- mkdir -p $(dir $@)
+	cp $^ $@
+
+.PHONY: install
+install: $(DESTDIR)$(PREFIX)/include/kvstore/db_base.h $(DESTDIR)$(PREFIX)/include/kvstore/db_base_internal.h $(DESTDIR)$(PREFIX)/include/kvstore/db_schema.h $(DESTDIR)$(PREFIX)/lib/libkvstore.so $(DESTDIR)$(PREFIX)/lib/libkvstore.a
+
+.PHONY: uninstall
+uninstall:
+	rm -rf $(DESTDIR)$(PREFIX)/include/kvstore
+	rm $(DESTDIR)$(PREFIX)/lib/libkvstore.so
+	rm $(DESTDIR)$(PREFIX)/lib/libkvstore.a
+
 
 
 $(DEPS_DIR)/liblmdb/liblmdb.a: | mdb
