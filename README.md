@@ -30,6 +30,7 @@ Semi-supported back-ends:
 
 Possible future back-ends:
 
+- An original distributed back-end supporting both strong and eventual consistency
 - [WiredTiger](https://docs.mongodb.com/manual/core/wiredtiger/)
 - [BerkeleyDB?](http://www.oracle.com/us/products/database/berkeley-db/index.html)
 - [CockroachDB?](https://github.com/cockroachdb/cockroach)
@@ -51,6 +52,10 @@ Notable differences from LMDB's API:
 	- `db_cursor_next`: steps forward (dir is positive) or backward (dir is negative).
 	- `db_cursor_first`: seeks to first (dir is positive) or last (dir is negative) element.
 	- `db_cursor_get` is still supported.
+- Range functions have been added:
+	- `db_cursor_seekr` seeks within a range
+	- `db_cursor_firstr` finds the first or last key in a range
+	- `db_cursor_nextr` finds the next or previous key in a range
 - DBIs are not supported, There is only a single keyspace. (Use ranges for partitioning.)
 - `DUPSORT` mode is not supported. Each key can only have one value. (Suffix your keys and use ranges.)
 - Many of the more specialized options are unsupported.
@@ -59,14 +64,15 @@ Notable differences from LMDB's API:
 - A low level schema layer is included. It's optional and subject to change.
 - Concurrent access between several processes is supported by some back-ends (LMDB) and not others (LevelDB).
 - Puts with `NULL` data (rather than just empty data) are explicitly allowed.
+- `db_cmd` lets you implement your own high level commands for efficient logical replication.
 
 Known Issues
 ------------
 
+- libkvstore is still under heavy development and the API is still in flux.
+- The test suite is nowhere near thorough.
 - The RocksDB and HyperLevelDB back-ends are currently broken.
 - Custom comparators are currently unsupported in any of the included back-ends due to limitations with LMDB (which is even used in the LevelDB back-end).
-- The LevelDB-based back-ends don't support nested transactions yet.
-- The lsmdb back-end is more or less unsupported.
 - Disk formats are not explicitly detected. If your application supports multiple back-ends, you may need to track which one is used manually.
 
 License: MIT
