@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include "lsmdb/lsmdb.h"
 #include "db_base_internal.h"
 #include "common.h"
@@ -11,6 +12,9 @@ struct DB_env {
 	DB_base const *isa;
 	LSMDB_env *env;
 	DB_cmd_data cmd[1];
+	unsigned flags;
+	char *path;
+	int mode;
 };
 struct DB_txn {
 	DB_base const *isa;
@@ -46,7 +50,13 @@ cleanup:
 	return rc;
 }
 DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
-	return DB_ENOTSUP; // TODO
+	if(!env) return DB_EINVAL;
+	switch(type) {
+	case DB_CFG_FLAGS: *(unsigned *)data = env->flags; return 0;
+	case DB_CFG_FILENAME: *(char const **)data = env->path; return 0;
+	case DB_CFG_FILEMODE: *(int *)data = env->mode; return 0;
+	default: return DB_ENOTSUP;
+	}
 }
 DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
@@ -57,12 +67,19 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 	} case DB_CFG_COMPARE: return DB_ENOTSUP;
 	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
 	case DB_CFG_TXNSIZE: return 0;
+	case DB_CFG_FLAGS: env->flags = *(unsigned *)data; return 0;
+	case DB_CFG_FILENAME:
+		free(env->path);
+		env->path = data ? strdup(data) : NULL;
+		if(data && !env->path) return DB_ENOMEM;
+		return 0;
+	case DB_CFG_FILEMODE: env->mode = *(int *)data; return 0;
 	default: return DB_ENOTSUP;
 	}
 }
-DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
+DB_FN int db__env_open0(DB_env *const env) {
 	if(!env) return DB_EINVAL;
-	return mdberr(lsmdb_env_open(env->env, name, flags | MDB_NOSUBDIR, mode));
+	return mdberr(lsmdb_env_open(env->env, env->path, env->flags | MDB_NOSUBDIR, env->mode));
 }
 DB_FN void db__env_close(DB_env *env) {
 	if(!env) return;
@@ -70,6 +87,9 @@ DB_FN void db__env_close(DB_env *env) {
 	env->isa = NULL;
 	env->cmd->fn = NULL;
 	env->cmd->ctx = NULL;
+	env->flags = 0;
+	free(env->path); env->path = NULL;
+	env->mode = 0;
 	assert_zeroed(env, 1);
 	free(env); env = NULL;
 }

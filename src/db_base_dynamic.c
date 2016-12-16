@@ -17,6 +17,23 @@ struct DB_cursor {
 	DB_base const *isa;
 };
 
+static int create_internal(DB_base const *const base, DB_env **const out) {
+	if(!base) return DB_EINVAL;
+	if(!out) return DB_EINVAL;
+	DB_env *env = NULL;
+	int rc = base->env_create(&env);
+	if(rc < 0) return rc;
+
+	// Set standard settings to ensure as much uniformity as possible.
+	unsigned flags = 0; // Synchronous, read-write
+	int mode = 0600;
+	db_env_set_config(env, DB_CFG_FLAGS, &flags);
+	db_env_set_config(env, DB_CFG_FILEMODE, &mode);
+
+	*out = env; env = NULL;
+	return 0;
+}
+
 int db_env_create_base(char const *const basename, DB_env **const out) {
 	if(!basename) return db_env_create(out);
 	DB_base const *base = NULL;
@@ -28,17 +45,15 @@ int db_env_create_base(char const *const basename, DB_env **const out) {
 //	if(0 == strcmp(basename, "lsmdb")) base = db_base_lsmdb;
 	if(0 == strcmp(basename, "debug")) base = db_base_debug;
 //	if(0 == strcmp(basename, "distributed")) base = db_base_distributed;
-	if(!base) return DB_EINVAL;
-	return base->env_create(out);
+	return create_internal(base, out);
 }
 int db_env_create_custom(DB_base const *const base, DB_env **const out) {
-	if(!base) return DB_EINVAL;
-	return base->env_create(out);
+	return create_internal(base, out);
 }
 
 int db_env_create(DB_env **const out) {
 	if(!db_base_default) return DB_PANIC;
-	return db_base_default->env_create(out);
+	return create_internal(db_base_default, out);
 }
 int db_env_get_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
@@ -48,9 +63,16 @@ int db_env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
 	return env->isa->env_set_config(env, type, data);
 }
-int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
+int db_env_open0(DB_env *const env) {
 	if(!env) return DB_EINVAL;
-	return env->isa->env_open(env, name, flags, mode);
+	return env->isa->env_open0(env);
+}
+int db_env_open(DB_env *const env, char const *const name, unsigned flags, int mode) {
+	if(!env) return DB_EINVAL;
+	db_env_set_config(env, DB_CFG_FILENAME, (char *)name);
+	db_env_set_config(env, DB_CFG_FLAGS, &flags);
+	db_env_set_config(env, DB_CFG_FILEMODE, &mode);
+	return db_env_open0(env);
 }
 void db_env_close(DB_env *env) {
 	if(!env) return;

@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include "liblmdb/lmdb.h"
 #include "db_base_internal.h"
 #include "common.h"
@@ -16,6 +17,8 @@ struct DB_env {
 	MDB_env *env;
 	DB_cmp_data cmp[1];
 	DB_cmd_data cmd[1];
+	char *path;
+	int mode;
 };
 struct DB_txn {
 	DB_base const *isa;
@@ -63,6 +66,9 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 	case DB_CFG_KEYSIZE:
 		*(size_t *)data = mdb_env_get_maxkeysize(env->env);
 		return 0;
+	case DB_CFG_FLAGS: return mdberr(mdb_env_get_flags(env->env, data));
+	case DB_CFG_FILENAME: *(char const **)data = env->path; return 0;
+	case DB_CFG_FILEMODE: *(int *)data = env->mode; return 0;
 	default: return DB_ENOTSUP;
 	}
 }
@@ -74,12 +80,26 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		return mdberr(mdb_env_set_mapsize(env->env, *sp));
 	} case DB_CFG_COMPARE: return DB_ENOTSUP; //*env->cmp = *(DB_cmp_data *)data; return 0;
 	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
+	case DB_CFG_FLAGS: {
+		unsigned flags = *(unsigned *)data;
+		int rc = mdberr(mdb_env_set_flags(env->env, flags, 1));
+		if(rc < 0) return rc;
+		rc = mdberr(mdb_env_set_flags(env->env, ~flags, 0));
+		if(rc < 0) return rc;
+		return 0;
+	} case DB_CFG_FILENAME:
+		free(env->path);
+		env->path = data ? strdup(data) : NULL;
+		if(data && !env->path) return DB_ENOMEM;
+		return 0;
+	case DB_CFG_FILEMODE: env->mode = *(int *)data; return 0;
 	default: return DB_ENOTSUP;
 	}
 }
-DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
+DB_FN int db__env_open0(DB_env *const env) {
 	if(!env) return DB_EINVAL;
-	int rc = mdberr(mdb_env_open(env->env, name, flags | MDB_NOSUBDIR, mode));
+	// Flags set with mdb_env_set_flags stay set.
+	int rc = mdberr(mdb_env_open(env->env, env->path, MDB_NOSUBDIR, env->mode));
 	if(rc < 0) return rc;
 	MDB_txn *txn = NULL;
 	MDB_dbi dbi;
@@ -107,6 +127,8 @@ DB_FN void db__env_close(DB_env *env) {
 	env->cmp->ctx = NULL;
 	env->cmd->fn = NULL;
 	env->cmd->ctx = NULL;
+	free(env->path); env->path = NULL;
+	env->mode = 0;
 	assert_zeroed(env, 1);
 	free(env); env = NULL;
 }

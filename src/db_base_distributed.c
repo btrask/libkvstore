@@ -58,7 +58,12 @@ cleanup:
 	return rc;
 }
 DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
-	return DB_ENOTSUP; // TODO
+	if(!env) return DB_EINVAL;
+	switch(type) {
+	case DB_CFG_INNERDB: *(DB_env **)data = env->main; return 0;
+	case DB_CFG_COMMIT: *(DB_commit_data *)data = *env->commit; return 0;
+	default: return db_env_get_config(env->main, type, data);
+	}
 }
 DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
@@ -67,32 +72,38 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 	// Ownership becomes a little bit complex...
 	switch(type) {
 	case DB_CFG_TXNSIZE: return DB_ENOTSUP; // TODO
-	case DB_CFG_INNERDB: {
-		DB_env *const x = data;
+	case DB_CFG_INNERDB:
 		db_env_close(env->main);
-		env->main = x;
+		env->main = (DB_env *)data;
 		return 0;
-	} case DB_CFG_COMMIT: {
-		DB_commit_data const *const x = data;
-		*env->commit = *x;
-		return 0;
-	} default:
-		return db_env_set_config(env->main, type, data);
+	case DB_CFG_COMMIT: *env->commit = *(DB_commit_data *)data; return 0;
+	default: return db_env_set_config(env->main, type, data);
 	}
 }
-DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
+DB_FN int db__env_open0(DB_env *const env) {
 	if(!env) return DB_EINVAL;
-	char sub[511+1];
+	char const *path = NULL;
+	char sub[1023+1];
+	int mode;
 	int rc;
-	rc = db_env_open(env->main, name, 0, mode);
+	rc = db_env_open0(env->main);
 	if(rc < 0) goto cleanup;
 
-	rc = snprintf(sub, sizeof(sub), "%s/tmp.db", name);
+	rc = db_env_get_config(env->main, DB_CFG_FILENAME, &path);
+	if(rc < 0) goto cleanup;
+	if(!path) rc = DB_EINVAL;
+	if(rc < 0) goto cleanup;
+
+	rc = db_env_get_config(env->main, DB_CFG_FILEMODE, &mode);
+	if(rc < 0) mode = 0600;
+
+	rc = snprintf(sub, sizeof(sub), "%s/tmp.db", path);
 	if(rc < 0 || rc >= sizeof(sub)) rc = DB_EIO;
 	if(rc < 0) goto cleanup;
-	rc = db_env_open(env->temp, sub, MDB_WRITEMAP | MDB_NOSUBDIR, mode);
+	rc = db_env_open(env->temp, sub, 0, mode);
 	if(rc < 0) goto cleanup;
 cleanup:
+	path = NULL;
 	return rc;
 }
 DB_FN void db__env_close(DB_env *env) {

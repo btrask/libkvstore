@@ -78,9 +78,9 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		return db_env_set_config(env->env, type, data);
 	}
 }
-DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
+DB_FN int db__env_open0(DB_env *const env) {
 	if(!env) return DB_EINVAL;
-	int rc = db_env_open(env->env, name, flags, mode);
+	int rc = db_env_open0(env->env);
 	LOG(env, rc);
 	return rc;
 }

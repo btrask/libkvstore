@@ -100,9 +100,12 @@ typedef struct {
 #define DB_CFG_COMMAND 3 // DB_cmd_data *data
 #define DB_CFG_TXNSIZE 4 // size_t *data
 #define DB_CFG_LOG 5 // DB_print_data *data
-#define DB_CFG_INNERDB 6 // DB_env *data (takes ownership)
+#define DB_CFG_INNERDB 6 // DB_env *set (takes ownership) / DB_env **get
 #define DB_CFG_COMMIT 7 // DB_commit_data *data
 #define DB_CFG_KEYSIZE 8 // size_t *data (might be read-only)
+#define DB_CFG_FLAGS 9 // unsigned *data (DB_NOSYNC, DB_RDONLY)
+#define DB_CFG_FILENAME 10 // char const *set / char const **get
+#define DB_CFG_FILEMODE 11 // int *data (e.g. 0644)
 
 int db_env_create_base(char const *const basename, DB_env **const out);
 int db_env_create_custom(DB_base const *const base, DB_env **const out);
@@ -110,7 +113,8 @@ int db_env_create_custom(DB_base const *const base, DB_env **const out);
 int db_env_create(DB_env **const out);
 int db_env_get_config(DB_env *const env, unsigned const type, void *data);
 int db_env_set_config(DB_env *const env, unsigned const type, void *data);
-int db_env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode);
+int db_env_open0(DB_env *const env);
+int db_env_open(DB_env *const env, char const *const name, unsigned const flags, int const mode); // Convenience
 void db_env_close(DB_env *env);
 
 int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out);

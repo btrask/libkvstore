@@ -44,6 +44,8 @@ struct DB_env {
 	leveldb_writeoptions_t *wopts;
 	DB_cmp_data cmp[1];
 	DB_cmd_data cmd[1];
+	unsigned flags;
+	char *path;
 };
 struct DB_txn {
 	DB_base const *isa;
@@ -330,6 +332,8 @@ DB_FN int db__env_create(DB_env **const out) {
 	leveldb_options_set_comparator(env->opts, env->comparator);
 	env->cmp->fn = NULL;
 	env->cmp->ctx = NULL;
+	env->flags = 0;
+	env->path = NULL;
 
 	int rc = db_env_create_base("mdb", &env->tmpenv);
 	if(rc < 0) {
@@ -342,6 +346,7 @@ DB_FN int db__env_create(DB_env **const out) {
 		db_env_close(env); env = NULL;
 		return DB_ENOMEM;
 	}
+	env->flags &= ~DB_NOSYNC;
 	leveldb_writeoptions_set_sync(env->wopts, 1);
 
 	*out = env;
@@ -353,6 +358,8 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 	case DB_CFG_COMMAND: *(DB_cmd_data *)data = *env->cmd; return 0;
 	case DB_CFG_KEYSIZE: return db_env_get_config(env->tmpenv, type, data);
 	case DB_CFG_TXNSIZE: return db_env_get_config(env->tmpenv, DB_CFG_MAPSIZE, data);
+	case DB_CFG_FLAGS: *(unsigned *)data = env->flags; return 0;
+	case DB_CFG_FILENAME: *(char const **)data = env->path; return 0;
 	default: return DB_ENOTSUP;
 	}
 }
@@ -363,13 +370,22 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 	case DB_CFG_COMPARE: return DB_ENOTSUP; //*env->cmp = *(DB_cmp_data *)data; return 0;
 	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
 	case DB_CFG_TXNSIZE: return db_env_set_config(env->tmpenv, DB_CFG_MAPSIZE, data);
+	case DB_CFG_FLAGS:
+		env->flags = DB_NOSYNC & *(unsigned *)data;
+		leveldb_writeoptions_set_sync(env->wopts, !(DB_NOSYNC & env->flags));
+		return 0;
+	case DB_CFG_FILENAME:
+		free(env->path);
+		env->path = data ? strdup(data) : NULL;
+		if(data && !env->path) return DB_ENOMEM;
+		return 0;
 	default: return DB_ENOTSUP;
 	}
 }
-DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const flags, unsigned const mode) {
+DB_FN int db__env_open0(DB_env *const env) {
 	if(!env) return DB_EINVAL;
 	char *err = NULL;
-	env->db = leveldb_open(env->opts, name, &err);
+	env->db = leveldb_open(env->opts, env->path, &err);
 	if(err) fprintf(stderr, "Database error %s\n", err);
 	leveldb_free(err);
 	if(!env->db || err) return -1; // TODO: Parse error string?
@@ -381,7 +397,7 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 	}
 
 	char tmppath[512]; // TODO
-	if(snprintf(tmppath, sizeof(tmppath), "%s/tmp.mdb", name) < 0) return -1;
+	if(snprintf(tmppath, sizeof(tmppath), "%s/tmp.mdb", env->path) < 0) return -1;
 
 	// Notes on flags:
 	// MDB_NOSYNC serves no point, since temp txns are never committed.
@@ -390,7 +406,6 @@ DB_FN int db__env_open(DB_env *const env, char const *const name, unsigned const
 	if(rc < 0) return rc;
 	(void)unlink(tmppath);
 
-	leveldb_writeoptions_set_sync(env->wopts, !(DB_NOSYNC & flags));
 	return 0;
 }
 DB_FN void db__env_close(DB_env *env) {
@@ -416,6 +431,8 @@ DB_FN void db__env_close(DB_env *env) {
 	env->cmp->ctx = NULL;
 	env->cmd->fn = NULL;
 	env->cmd->ctx = NULL;
+	env->flags = 0;
+	free(env->path); env->path = NULL;
 	assert_zeroed(env, 1);
 	free(env); env = NULL;
 }
