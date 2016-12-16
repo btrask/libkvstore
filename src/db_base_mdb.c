@@ -81,10 +81,12 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 	} case DB_CFG_COMPARE: return DB_ENOTSUP; //*env->cmp = *(DB_cmp_data *)data; return 0;
 	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
 	case DB_CFG_FLAGS: {
+		unsigned const valid = MDB_NOSYNC;
 		unsigned flags = *(unsigned *)data;
-		int rc = mdberr(mdb_env_set_flags(env->env, flags, 1));
+		int rc;
+		rc = mdberr(mdb_env_set_flags(env->env, valid & flags, 1));
 		if(rc < 0) return rc;
-		rc = mdberr(mdb_env_set_flags(env->env, ~flags, 0));
+		rc = mdberr(mdb_env_set_flags(env->env, valid & ~flags, 0));
 		if(rc < 0) return rc;
 		return 0;
 	} case DB_CFG_FILENAME:
