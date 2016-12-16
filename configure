@@ -11,5 +11,5 @@ snappy_autogen () { (
 	. ./autogen.sh
 ); }
 
-(cd ./deps/snappy && snappy_autogen && ./configure CFLAGS=-fPIC)
+(cd ./deps/snappy && snappy_autogen && ./configure CFLAGS=-fPIC CPPFLAGS=-fPIC)
 

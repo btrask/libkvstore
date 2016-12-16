@@ -82,6 +82,7 @@ OBJECTS := \
 	$(BUILD_DIR)/src/db_helper.o \
 	$(BUILD_DIR)/src/db_schema.o
 
+SHARED_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.so
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
 
 
@@ -154,7 +155,7 @@ HEADERS := \
 .PHONY: all
 all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(HEADERS)
 
-$(BUILD_DIR)/libkvstore.so: $(OBJECTS) $(SHARED_LIBS)
+$(BUILD_DIR)/libkvstore.so: $(OBJECTS) $(STATIC_LIBS)
 	@- mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -shared $^ -o $@
 
@@ -204,7 +205,7 @@ $(BUILD_DIR)/test/%: $(BUILD_DIR)/test/%.o $(BUILD_DIR)/libkvstore.a $(STATIC_LI
 $(DEPS_DIR)/liblmdb/liblmdb.a: | mdb
 .PHONY: mdb
 mdb:
-	$(MAKE) -C $(DEPS_DIR)/liblmdb --no-print-directory
+	XCFLAGS="-fPIC" $(MAKE) -C $(DEPS_DIR)/liblmdb --no-print-directory
 
 $(DEPS_DIR)/leveldb/out-shared/libleveldb.so: | leveldb
 $(DEPS_DIR)/leveldb/out-static/libleveldb.a: | leveldb
