@@ -88,6 +88,7 @@ DB_FN void db__env_close(DB_env *env) {
 	if(!env) return;
 	LOG(env, 0);
 	db_env_close(env->env); env->env = NULL;
+	*env->log = (DB_print_data){0};
 	env->isa = NULL;
 	assert_zeroed(env, 1);
 	free(env); env = NULL;
