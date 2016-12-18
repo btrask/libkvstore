@@ -5,10 +5,80 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include "liblmdb/lmdb.h"
 #include "db_base_internal.h"
 #include "db_wrbuf.h"
 #include "common.h"
+
+#define DB_PATH_MAX (1023+1)
+
+static int err(int x) {
+	if(x < 0) return -errno;
+	return x;
+}
+
+int db_distributed_apply(DB_env *const dist, FILE *const data) {
+	DB_env *env = NULL;
+	DB_txn *txn = NULL;
+	unsigned char *keybuf = NULL;
+	unsigned char *valbuf = NULL;
+	int rc = db_env_get_config(dist, DB_CFG_INNERDB, &env);
+	if(rc < 0) goto cleanup;
+	rc = db_txn_begin(env, NULL, DB_RDWR, &txn);
+	if(rc < 0) goto cleanup;
+	for(;;) {
+		char type = 0;
+		unsigned long long keylen = 0, vallen = 0;
+		// TODO: Obviously this parsing isn't very robust.
+		fscanf(data, "\n%c:", &type);
+		if('P' == type || 'D' == type || '!' == type) {
+			fscanf(data, "%llu;", &keylen);
+			if('P' == type) {
+				fscanf(data, "%llu;", &vallen);
+			}
+		}
+
+		keybuf = malloc(keylen+1); // TODO: Validate lengths somehow? < SIZE_MAX?
+		valbuf = malloc(vallen+1);
+		if(!keybuf || !valbuf) rc = DB_ENOMEM;
+		if(rc < 0) goto cleanup;
+		rc = err(fread(keybuf, 1, keylen, data));
+		if(rc >= 0 && rc < keylen) rc = DB_EIO;
+		if(rc < 0) goto cleanup;
+		rc = err(fread(valbuf, 1, vallen, data));
+		if(rc >= 0 && rc < vallen) rc = DB_EIO;
+		if(rc < 0) goto cleanup;
+
+		DB_val key = { keylen, keybuf };
+		DB_val val = { vallen, valbuf };
+		switch(type) {
+		case 'P': rc = db_put(txn, &key, &val, 0); break;
+		case 'D': rc = db_del(txn, &key, 0); break;
+		case '!': rc = db_cmd(txn, keybuf, keylen); break;
+		case '.': rc = db_txn_commit(txn); txn = NULL; goto cleanup;
+		default: rc = DB_CORRUPTED; goto cleanup;
+		}
+		free(keybuf); keybuf = NULL;
+		free(valbuf); valbuf = NULL;
+		if(rc < 0) goto cleanup;
+	}
+cleanup:
+	db_txn_abort(txn); txn = NULL;
+	env = NULL;
+	free(keybuf); keybuf = NULL;
+	free(valbuf); valbuf = NULL;
+	return rc;
+}
+static int default_commit(void *ctx, DB_txn *const temp, FILE *const data) {
+	DB_env *dist = NULL;
+	int rc = db_txn_env(temp, &dist);
+	if(rc < 0) return rc;
+	return db_distributed_apply(dist, data);
+}
 
 struct DB_env {
 	DB_base const *isa;
@@ -16,6 +86,9 @@ struct DB_env {
 	DB_env *temp;
 	DB_cmd_data cmd[1];
 	DB_commit_data commit[1];
+	unsigned flags;
+	char *path;
+	int mode;
 };
 struct DB_txn {
 	DB_base const *isa;
@@ -24,6 +97,8 @@ struct DB_txn {
 	DB_txn *child;
 	DB_txn *main;
 	DB_txn *temp;
+	FILE *serial;
+	off_t length;
 	DB_cursor *cursor;
 };
 struct DB_cursor {
@@ -40,10 +115,12 @@ DB_FN int db__env_init(DB_env *const env) {
 	assert_zeroed(env, 1);
 	int rc = 0;
 	env->isa = db_base_distributed;
+	env->flags = 0;
+	env->path = NULL;
+	env->mode = 0600;
+	env->commit->fn = default_commit;
 
 	rc = db_env_create_base("mdb", &env->main);
-	if(rc < 0) goto cleanup;
-	rc = db_env_create_base("mdb", &env->temp);
 	if(rc < 0) goto cleanup;
 cleanup:
 	if(rc < 0) db_env_destroy(env);
@@ -55,6 +132,9 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 	case DB_CFG_COMMAND: *(DB_cmd_data *)data = *env->cmd; return 0;
 	case DB_CFG_INNERDB: *(DB_env **)data = env->main; return 0;
 	case DB_CFG_COMMIT: *(DB_commit_data *)data = *env->commit; return 0;
+	case DB_CFG_FLAGS: *(unsigned *)data = env->flags; return 0;
+	case DB_CFG_FILENAME: *(char const **)data = env->path; return 0;
+	case DB_CFG_FILEMODE: *(int *)data = env->mode; return 0;
 	default: return db_env_get_config(env->main, type, data);
 	}
 }
@@ -71,39 +151,67 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		env->main = (DB_env *)data;
 		return 0;
 	case DB_CFG_COMMIT: *env->commit = *(DB_commit_data *)data; return 0;
+	case DB_CFG_FLAGS: env->flags = *(unsigned *)data; return 0;
+	case DB_CFG_FILENAME:
+		free(env->path);
+		env->path = data ? strdup(data) : NULL;
+		if(data && !env->path) return DB_ENOMEM;
+		return 0;
+	case DB_CFG_FILEMODE: env->mode = *(int *)data; return 0;
 	default: return db_env_set_config(env->main, type, data);
 	}
 }
 DB_FN int db__env_open0(DB_env *const env) {
 	if(!env) return DB_EINVAL;
-	char const *path = NULL;
-	char sub[1023+1];
-	int mode;
+	if(!env->path) return DB_EINVAL;
+	char path[DB_PATH_MAX];
 	int rc;
+
+	rc = err(mkdir(env->path, env->mode | 0111)); // 0111 ensures dir is listable.
+	if(DB_EEXIST == rc) {
+		rc = 0;
+	} else if(rc < 0) {
+		goto cleanup;
+	} else {
+		// TODO: fsync
+	}
+
+	rc = err(snprintf(path, sizeof(path), "%s/main", env->path));
+	if(rc >= sizeof(path)) rc = DB_ENAMETOOLONG;
+	if(rc < 0) goto cleanup;
+	db_env_set_config(env->main, DB_CFG_FLAGS, &env->flags);
+	db_env_set_config(env->main, DB_CFG_FILENAME, path);
+	db_env_set_config(env->main, DB_CFG_FILEMODE, &env->mode);
 	rc = db_env_open0(env->main);
 	if(rc < 0) goto cleanup;
 
-	rc = db_env_get_config(env->main, DB_CFG_FILENAME, &path);
-	if(rc < 0) goto cleanup;
-	if(!path) rc = DB_EINVAL;
-	if(rc < 0) goto cleanup;
+	if(!(DB_RDONLY & env->flags)) {
+		rc = db_env_create_base("mdb", &env->temp);
+		if(rc < 0) goto cleanup;
 
-	rc = db_env_get_config(env->main, DB_CFG_FILEMODE, &mode);
-	if(rc < 0) mode = 0600;
+		rc = err(snprintf(path, sizeof(path), "%s/temp", env->path));
+		if(rc >= sizeof(path)) rc = DB_ENAMETOOLONG;
+		if(rc < 0) goto cleanup;
+		db_env_set_config(env->temp, DB_CFG_FILENAME, path);
+		db_env_set_config(env->temp, DB_CFG_FILEMODE, &env->mode);
+		rc = db_env_open0(env->temp);
+		if(rc < 0) goto cleanup;
+	}
 
-	rc = snprintf(sub, sizeof(sub), "%s/tmp.db", path);
-	if(rc < 0 || rc >= sizeof(sub)) rc = DB_EIO;
-	if(rc < 0) goto cleanup;
-	rc = db_env_open(env->temp, sub, 0, mode);
-	if(rc < 0) goto cleanup;
 cleanup:
-	path = NULL;
 	return rc;
 }
 DB_FN void db__env_destroy(DB_env *const env) {
 	if(!env) return;
 	db_env_close(env->main); env->main = NULL;
 	db_env_close(env->temp); env->temp = NULL;
+	env->cmd->fn = NULL;
+	env->cmd->ctx = NULL;
+	env->commit->fn = NULL;
+	env->commit->ctx = NULL;
+	env->flags = 0;
+	free(env->path); env->path = NULL;
+	env->mode = 0;
 	env->isa = NULL;
 	assert_zeroed(env, 1);
 }
@@ -127,6 +235,23 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 	if(!(DB_RDONLY & flags)) {
 		rc = db_txn_begin(env->temp, parent ? parent->temp : NULL, flags, &txn->temp);
 		if(rc < 0) goto cleanup;
+
+		if(parent) {
+			txn->serial = parent->serial;
+			txn->length = parent->length;
+		} else {
+			// TODO: We're keeping these purely for debugging.
+			static int x = 0;
+			char path[DB_PATH_MAX];
+			rc = err(snprintf(path, sizeof(path), "%s/serial-%d", env->path, x++));
+			if(rc >= sizeof(path)) rc = DB_ENAMETOOLONG;
+			if(rc < 0) goto cleanup;
+			txn->serial = fopen(path, "w+b");
+			if(!txn->serial) rc = -errno;
+			if(rc < 0) goto cleanup;
+			//unlink(path);
+			txn->length = 0;
+		}
 	}
 
 	if(parent) parent->child = txn;
@@ -146,14 +271,25 @@ DB_FN int db__txn_commit_destroy(DB_txn *const txn) {
 	if(txn->parent) {
 		db_cursor_close(txn->cursor); txn->cursor = NULL;
 		rc = db_txn_commit(txn->temp); txn->temp = NULL;
+		if(rc < 0) goto cleanup;
+		txn->serial = NULL;
+		txn->parent->length = txn->length;
 		goto cleanup;
 	}
 
 	if(!txn->env->commit->fn) rc = DB_PANIC;
 	if(rc < 0) goto cleanup;
-	// TODO: How do we report puts and dels to the cb?
-	rc = txn->env->commit->fn(txn->env->commit->ctx, txn->env, NULL);
+
+	// TODO: We're currently using a '.' to indicate the end
+	// of transaction data instead of truncating.
+	int x = 0;
+	x = err(fprintf(txn->serial, "\n."));
+	assert(x >= 0);
+	x = err(fseek(txn->serial, 0, SEEK_SET));
+	assert(x >= 0);
+	rc = txn->env->commit->fn(txn->env->commit->ctx, txn, txn->serial);
 	if(rc < 0) goto cleanup;
+
 cleanup:
 	db_txn_abort_destroy(txn);
 	return rc;
@@ -163,6 +299,15 @@ DB_FN void db__txn_abort_destroy(DB_txn *const txn) {
 	if(txn->child) {
 		db_txn_abort(txn->child); txn->child = NULL;
 	}
+	if(!txn->serial) {
+		// Do nothing
+	} else if(txn->parent) {
+		int rc = err(fseek(txn->serial, txn->parent->length, SEEK_SET));
+		assert(rc >= 0);
+		txn->serial = NULL;
+	} else {
+		fclose(txn->serial); txn->serial = NULL;
+	}
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
 	db_txn_abort(txn->main); txn->main = NULL;
 	db_txn_abort(txn->temp); txn->temp = NULL;
@@ -170,6 +315,7 @@ DB_FN void db__txn_abort_destroy(DB_txn *const txn) {
 	txn->isa = NULL;
 	txn->env = NULL;
 	txn->parent = NULL;
+	txn->length = 0;
 	assert_zeroed(txn, 1);
 }
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
@@ -209,18 +355,71 @@ DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
 	return db_helper_get(txn, key, data);
 }
-DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
-	return db_helper_put(txn, key, data, flags); // TODO
+DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const val, unsigned const flags) {
+	if(!txn) return DB_EINVAL;
+	if(flags & ~DB_NOOVERWRITE) return DB_ENOTSUP; // TODO
+	if(!txn->temp) return DB_EACCES;
+	int rc = 0;
+	if(txn->serial) {
+		rc = err(fprintf(txn->serial, "\nP:%llu;%llu;",
+			(unsigned long long)key->size,
+			(unsigned long long)val->size));
+		if(rc < 0) goto cleanup;
+		rc = err(fwrite(key->data, 1, key->size, txn->serial));
+		if(rc >= 0 && rc < key->size) rc = DB_EIO;
+		if(rc < 0) goto cleanup;
+		rc = err(fwrite(val->data, 1, val->size, txn->serial));
+		if(rc >= 0 && rc < val->size) rc = DB_EIO;
+		if(rc < 0) goto cleanup;
+	}
+	rc = db_helper_put(txn, key, val, flags);
+	if(rc < 0) goto cleanup;
+	if(txn->serial) {
+		txn->length = ftell(txn->serial);
+		assert(txn->length >= 0);
+	}
+cleanup:
+	if(txn->serial && rc < 0) {
+		int x = err(fseek(txn->serial, txn->length, SEEK_SET));
+		assert(x >= 0);
+	}
+	return rc;
 }
 DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
-	return db_wrbuf_del_direct(txn->temp, key, flags); // TODO
+	if(flags) return DB_ENOTSUP; // TODO
+	if(!txn->temp) return DB_EACCES;
+	int rc = 0;
+	if(txn->serial) {
+		rc = err(fprintf(txn->serial, "\nD:%llu;",
+			(unsigned long long)key->size));
+		if(rc < 0) goto cleanup;
+		rc = err(fwrite(key->data, 1, key->size, txn->serial));
+		if(rc >= 0 && rc < key->size) rc = DB_EIO;
+		if(rc < 0) goto cleanup;
+	}
+	rc = db_wrbuf_del_direct(txn->temp, key, flags);
+	if(rc < 0) goto cleanup;
+	if(txn->serial) {
+		txn->length = ftell(txn->serial);
+		assert(txn->length >= 0);
+	}
+cleanup:
+	if(txn->serial && rc < 0) {
+		int x = err(fseek(txn->serial, txn->length, SEEK_SET));
+		assert(x >= 0);
+	}
+	return rc;
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn) return DB_EINVAL;
 	if(!txn->env->cmd->fn) return DB_EINVAL;
+
+	FILE *serial = txn->serial; txn->serial = NULL;
 	int rc = txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len); // TODO
 	assert(txn->isa); // Simple check that we weren't committed/aborted.
+	txn->serial = serial;
+//cleanup:
 	return rc;
 }
 
@@ -242,10 +441,12 @@ DB_FN int db__cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 	DB_cursor *m = NULL;
 	int rc = 0;
 	cursor->isa = db_base_distributed;
-	cursor->txn = txn; // TODO: Open on root txn?
+	cursor->txn = txn;
 
-	rc = db_cursor_open(txn->temp, &t);
-	if(rc < 0) goto cleanup;
+	if(txn->temp) {
+		rc = db_cursor_open(txn->temp, &t);
+		if(rc < 0) goto cleanup;
+	}
 	rc = db_cursor_open(txn->main, &m);
 	if(rc < 0) goto cleanup;
 	rc = db_wrbuf_init(cursor->wrbuf, t, m);
@@ -309,11 +510,13 @@ DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range,
 
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_put(cursor->wrbuf, key, data, flags); // TODO
+	int rc = db_wrbuf_put(cursor->wrbuf, key, data, flags); // TODO
+	return rc;
 }
 DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_del(cursor->wrbuf, flags); // TODO
+	int rc = db_wrbuf_del(cursor->wrbuf, flags); // TODO
+	return rc;
 }
 
 DB_BASE_V0(distributed)

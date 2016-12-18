@@ -12,7 +12,7 @@
 #define E(expr) CHECK((rc = (expr)) >= 0, #expr)
 #define RES(err, expr) ((rc = expr) == (err) || (CHECK(rc >= 0, #expr), 0))
 #define CHECK(test, msg) ((test) ? (void)0 : ((void)fprintf(stderr, \
-	"%s:%d: %s: %s\n", __FILE__, __LINE__, msg, db_strerror(rc)), abort()))
+	"%s:%d: %s: %s (%d)\n", __FILE__, __LINE__, msg, db_strerror(rc), rc), abort()))
 
 static void bind(DB_val *const x, uint32_t *const n) {
 	x->size = sizeof(*n);

@@ -39,7 +39,7 @@ DB_base const *db_base_find(char const *const name) {
 	if(0 == strcmp(name, "debug")) return db_base_debug;
 #endif
 #ifdef DB_BASE_DISTRIBUTED
-//	if(0 == strcmp(name, "distributed")) return db_base_distributed;
+	if(0 == strcmp(name, "distributed")) return db_base_distributed;
 #endif
 	return NULL;
 }

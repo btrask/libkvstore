@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 // Equivalent to MDB constants.
@@ -47,6 +48,7 @@
 
 // Unlike MDB, these error codes are negative too.
 #define DB_ENOENT (-ENOENT)
+#define DB_EEXIST (-EEXIST)
 #define DB_EIO (-EIO)
 #define DB_ENOMEM (-ENOMEM)
 #define DB_EACCES (-EACCES)
@@ -54,6 +56,7 @@
 #define DB_EINVAL (-EINVAL)
 #define DB_ENOSPC (-ENOSPC)
 #define DB_ENOTSUP (-ENOTSUP)
+#define DB_ENAMETOOLONG (-ENAMETOOLONG)
 
 // Equivalent to MDB_val.
 typedef struct {
@@ -89,7 +92,7 @@ typedef struct {
 	void *ctx;
 } DB_print_data;
 
-typedef int (*DB_commit_func)(void *ctx, DB_env *const env, void *todo); // TODO
+typedef int (*DB_commit_func)(void *ctx, DB_txn *const temp, FILE *const data);
 typedef struct {
 	DB_commit_func fn;
 	void *ctx;
@@ -220,12 +223,15 @@ static char const *db_strerror(int const rc) {
 	case DB_BAD_VALSIZE: return "Database bad value size";
 
 	case DB_ENOENT: return "No entity";
+	case DB_EEXIST: return "Already exists";
 	case DB_EIO: return "IO";
 	case DB_ENOMEM: return "No memory";
 	case DB_EACCES: return "Access";
 	case DB_EBUSY: return "Busy";
 	case DB_EINVAL: return "Bad input value";
 	case DB_ENOSPC: return "No space";
+	case DB_ENOTSUP: return "Not supported";
+	case DB_ENAMETOOLONG: return "Name too long";
 
 	default: return NULL;
 	}
