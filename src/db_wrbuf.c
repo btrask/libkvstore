@@ -115,7 +115,7 @@ int db_wrbuf_put(DB_wrbuf *const buf, DB_val *const key, DB_val *const data, uns
 	int rc = 0;
 	// DB_APPEND is mostly just an optimization, so we currently
 	// don't bother checking it.
-	if(DB_CURRENT & flags) {
+	if(DB_CURRENT & flags) { // TODO: Just forward DB_CURRENT?
 		rc = db_wrbuf_current(buf, k, NULL);
 		if(rc < 0) return rc;
 	} else {
