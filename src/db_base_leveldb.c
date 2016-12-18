@@ -288,15 +288,17 @@ static int ldb_cursor_next(LDB_cursor *const cursor, DB_val *const key, DB_val *
 }
 
 
-DB_FN int db__env_create(DB_env **const out) {
-	DB_env *env = calloc(1, sizeof(struct DB_env));
-	if(!env) return DB_ENOMEM;
-
+DB_FN size_t db__env_size(void) {
+	return sizeof(struct DB_env);
+}
+DB_FN int db__env_init(DB_env *const env) {
+	if(!env) return DB_EINVAL;
+	assert_zeroed(env, 1);
 	env->isa = db_base_leveldb;
 
 	env->opts = leveldb_options_create();
 	if(!env->opts) {
-		db_env_close(env); env = NULL;
+		db_env_destroy(env);
 		return DB_ENOMEM;
 	}
 
@@ -319,13 +321,13 @@ DB_FN int db__env_create(DB_env **const out) {
 
 	env->filterpolicy = leveldb_filterpolicy_create_bloom(10);
 	if(!env->filterpolicy) {
-		db_env_close(env); env = NULL;
+		db_env_destroy(env);
 		return DB_ENOMEM;
 	}
 	leveldb_options_set_filter_policy(env->opts, env->filterpolicy);
 	env->comparator = leveldb_comparator_create(env, cmp_destructor, cmp_wrap, cmp_name);
 	if(!env->comparator) {
-		db_env_close(env); env = NULL;
+		db_env_destroy(env);
 		return DB_ENOMEM;
 	}
 	leveldb_options_set_comparator(env->opts, env->comparator);
@@ -336,19 +338,18 @@ DB_FN int db__env_create(DB_env **const out) {
 
 	int rc = db_env_create_base("mdb", &env->tmpenv);
 	if(rc < 0) {
-		db_env_close(env);
+		db_env_destroy(env);
 		return rc;
 	}
 
 	env->wopts = leveldb_writeoptions_create();
 	if(!env->wopts) {
-		db_env_close(env); env = NULL;
+		db_env_destroy(env);
 		return DB_ENOMEM;
 	}
 	env->flags &= ~DB_NOSYNC;
 	leveldb_writeoptions_set_sync(env->wopts, 1);
 
-	*out = env;
 	return 0;
 }
 DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
@@ -407,7 +408,7 @@ DB_FN int db__env_open0(DB_env *const env) {
 
 	return 0;
 }
-DB_FN void db__env_close(DB_env *env) {
+DB_FN void db__env_destroy(DB_env *const env) {
 	if(!env) return;
 	if(env->opts) {
 		leveldb_options_destroy(env->opts); env->opts = NULL;
@@ -433,17 +434,17 @@ DB_FN void db__env_close(DB_env *env) {
 	env->flags = 0;
 	free(env->path); env->path = NULL;
 	assert_zeroed(env, 1);
-	free(env); env = NULL;
 }
 
-DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
+DB_FN size_t db__txn_size(void) {
+	return sizeof(struct DB_txn);
+}
+DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn) {
 	if(!env) return DB_EINVAL;
-	if(!out) return DB_EINVAL;
+	if(!txn) return DB_EINVAL;
 	if(parent && parent->child) return DB_BAD_TXN;
+	assert_zeroed(txn, 1);
 	int rc = 0;
-	DB_txn *txn = calloc(1, sizeof(struct DB_txn));
-	if(!txn) rc = DB_ENOMEM;
-	if(rc < 0) goto cleanup;
 	txn->isa = db_base_leveldb;
 	txn->env = env;
 	txn->parent = parent;
@@ -466,12 +467,11 @@ DB_FN int db__txn_begin(DB_env *const env, DB_txn *const parent, unsigned const 
 	}
 
 	if(parent) parent->child = txn;
-	*out = txn; txn = NULL;
 cleanup:
-	db_txn_abort(txn); txn = NULL;
+	if(rc < 0) db_txn_abort_destroy(txn);
 	return rc;
 }
-DB_FN int db__txn_commit(DB_txn *txn) {
+DB_FN int db__txn_commit_destroy(DB_txn *const txn) {
 	if(!txn) return DB_EINVAL;
 	leveldb_writebatch_t *batch = NULL;
 	DB_cursor *cursor = NULL;
@@ -523,10 +523,10 @@ DB_FN int db__txn_commit(DB_txn *txn) {
 cleanup:
 	leveldb_writebatch_destroy(batch); batch = NULL;
 	cursor = NULL;
-	db_txn_abort(txn); txn = NULL;
+	db_txn_abort_destroy(txn);
 	return 0;
 }
-DB_FN void db__txn_abort(DB_txn *txn) {
+DB_FN void db__txn_abort_destroy(DB_txn *const txn) {
 	if(!txn) return;
 	if(txn->child) {
 		db_txn_abort(txn->child); txn->child = NULL;
@@ -544,7 +544,6 @@ DB_FN void db__txn_abort(DB_txn *txn) {
 	txn->flags = 0;
 	txn->isa = NULL;
 	assert_zeroed(txn, 1);
-	free(txn); txn = NULL;
 }
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
@@ -613,13 +612,14 @@ DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 	return db_helper_delr(txn, range, out);
 }
 
-DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
+DB_FN size_t db__cursor_size(void) {
+	return sizeof(struct DB_cursor);
+}
+DB_FN int db__cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 	if(!txn) return DB_EINVAL;
-	if(!out) return DB_EINVAL;
+	if(!cursor) return DB_EINVAL;
+	assert_zeroed(cursor, 1);
 	int rc = 0;
-	DB_cursor *cursor = calloc(1, sizeof(struct DB_cursor));
-	if(!cursor) rc = DB_ENOMEM;
-	if(rc < 0) goto cleanup;
 	cursor->isa = db_base_leveldb;
 
 	cursor->txn = txn;
@@ -631,12 +631,11 @@ DB_FN int db__cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	rc = ldb_cursor_open(txn->env->db, txn->ropts, txn->env->cmp, &cursor->persist);
 	if(rc < 0) goto cleanup;
 
-	*out = cursor; cursor = NULL;
 cleanup:
-	db_cursor_close(cursor); cursor = NULL;
+	if(rc < 0) db_cursor_destroy(cursor);
 	return rc;
 }
-DB_FN void db__cursor_close(DB_cursor *cursor) {
+DB_FN void db__cursor_destroy(DB_cursor *const cursor) {
 	if(!cursor) return;
 	db_cursor_close(cursor->pending); cursor->pending = NULL;
 	ldb_cursor_close(cursor->persist); cursor->persist = NULL;
@@ -644,7 +643,6 @@ DB_FN void db__cursor_close(DB_cursor *cursor) {
 	cursor->txn = NULL;
 	cursor->state = S_INVALID;
 	assert_zeroed(cursor, 1);
-	free(cursor); cursor = NULL;
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;

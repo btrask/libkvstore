@@ -17,45 +17,63 @@ struct DB_cursor {
 	DB_base const *isa;
 };
 
-static int create_internal(DB_base const *const base, DB_env **const out) {
+DB_base const *db_base_find(char const *const name) {
+	if(!name) return db_base_default;
+	DB_base const *base = db_base_default;
+	if(0 == strcmp(name, "default")) base = db_base_default;
+	if(0 == strcmp(name, "mdb")) base = db_base_mdb;
+	if(0 == strcmp(name, "leveldb")) base = db_base_leveldb;
+#ifdef DB_BASE_ROCKSDB
+	if(0 == strcmp(name, "rocksdb")) base = db_base_rocksdb;
+#endif
+//	if(0 == strcmp(name, "hyper")) base = db_base_hyper;
+//	if(0 == strcmp(name, "lsmdb")) base = db_base_lsmdb;
+	if(0 == strcmp(name, "debug")) base = db_base_debug;
+//	if(0 == strcmp(name, "distributed")) base = db_base_distributed;
+	return base;
+}
+
+int db_env_init_base(char const *const basename, DB_env *const env) {
+	return db_env_init_custom(db_base_find(basename), env);
+}
+int db_env_create_base(char const *const basename, DB_env **const out) {
+	return db_env_create_custom(db_base_find(basename), out);
+}
+int db_env_init_custom(DB_base const *const base, DB_env *const env) {
 	if(!base) return DB_EINVAL;
-	if(!out) return DB_EINVAL;
-	DB_env *env = NULL;
-	int rc = base->env_create(&env);
+	int rc = base->env_init(env);
 	if(rc < 0) return rc;
+	assert(env->isa);
 
 	// Set standard settings to ensure as much uniformity as possible.
 	unsigned flags = 0; // Synchronous, read-write
 	int mode = 0600;
 	db_env_set_config(env, DB_CFG_FLAGS, &flags);
 	db_env_set_config(env, DB_CFG_FILEMODE, &mode);
-
+	return 0;
+}
+int db_env_create_custom(DB_base const *const base, DB_env **const out) {
+	if(!base) return DB_EINVAL;
+	if(!out) return DB_EINVAL;
+	DB_env *env = calloc(1, db_env_size(base));
+	if(!env) return DB_ENOMEM;
+	int rc = db_env_init_custom(base, env);
+	if(rc < 0) return rc;
 	*out = env; env = NULL;
 	return 0;
 }
 
-int db_env_create_base(char const *const basename, DB_env **const out) {
-	if(!basename) return db_env_create(out);
-	DB_base const *base = NULL;
-	if(0 == strcmp(basename, "default")) base = db_base_default;
-	if(0 == strcmp(basename, "mdb")) base = db_base_mdb;
-	if(0 == strcmp(basename, "leveldb")) base = db_base_leveldb;
-#ifdef DB_BASE_ROCKSDB
-	if(0 == strcmp(basename, "rocksdb")) base = db_base_rocksdb;
-#endif
-//	if(0 == strcmp(basename, "hyper")) base = db_base_hyper;
-//	if(0 == strcmp(basename, "lsmdb")) base = db_base_lsmdb;
-	if(0 == strcmp(basename, "debug")) base = db_base_debug;
-//	if(0 == strcmp(basename, "distributed")) base = db_base_distributed;
-	return create_internal(base, out);
+size_t db_env_size(DB_base const *const base) {
+	assert(base);
+	return base->env_size();
 }
-int db_env_create_custom(DB_base const *const base, DB_env **const out) {
-	return create_internal(base, out);
+int db_env_init(DB_env *const env) {
+	if(!db_base_default) return DB_PANIC;
+	return db_env_init_custom(db_base_default, env);
 }
-
 int db_env_create(DB_env **const out) {
 	if(!db_base_default) return DB_PANIC;
-	return create_internal(db_base_default, out);
+	return db_env_create_custom(db_base_default, out);
 }
 int db_env_get_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
@@ -76,23 +94,61 @@ int db_env_open(DB_env *const env, char const *const name, unsigned flags, int m
 	db_env_set_config(env, DB_CFG_FILEMODE, &mode);
 	return db_env_open0(env);
 }
+DB_base const *db_env_base(DB_env *const env) {
+	if(!env) return NULL;
+	return env->isa;
+}
+void db_env_destroy(DB_env *const env) {
+	if(!env) return;
+	env->isa->env_destroy(env);
+}
 void db_env_close(DB_env *env) {
 	if(!env) return;
-	env->isa->env_close(env); env = NULL;
+	db_env_destroy(env);
+	free(env); env = NULL;
 }
 
+size_t db_txn_size(DB_base const *const base) {
+	assert(base);
+	return base->txn_size();
+}
+int db_txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn) {
+	if(!env) return DB_EINVAL;
+	int rc = env->isa->txn_begin_init(env, parent, flags, txn);
+	if(rc < 0) return rc;
+	assert(txn->isa);
+	return 0;
+}
 int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
 	if(!env) return DB_EINVAL;
-	return env->isa->txn_begin(env, parent, flags, out);
+	DB_txn *txn = calloc(1, db_txn_size(env->isa));
+	if(!txn) return DB_ENOMEM;
+	int rc = db_txn_begin_init(env, parent, flags, txn);
+	if(rc < 0) goto cleanup;
+	*out = txn; txn = NULL;
+cleanup:
+	free(txn); txn = NULL;
+	return rc;
+}
+int db_txn_commit_destroy(DB_txn *const txn) {
+	if(!txn) return DB_EINVAL;
+	int rc = txn->isa->txn_commit_destroy(txn);
+	return rc;
 }
 int db_txn_commit(DB_txn *txn) {
 	if(!txn) return DB_EINVAL;
-	int rc = txn->isa->txn_commit(txn); txn = NULL;
+	int rc = db_txn_commit_destroy(txn);
+	free(txn); txn = NULL;
 	return rc;
+}
+void db_txn_abort_destroy(DB_txn *const txn) {
+	if(!txn) return;
+	txn->isa->txn_abort_destroy(txn);
 }
 void db_txn_abort(DB_txn *txn) {
 	if(!txn) return;
-	txn->isa->txn_abort(txn); txn = NULL;
+	db_txn_abort_destroy(txn);
+	free(txn); txn = NULL;
 }
 int db_txn_upgrade(DB_txn *const txn, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
@@ -145,13 +201,36 @@ int db_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out)
 	return txn->isa->delr(txn, range, out);
 }
 
+size_t db_cursor_size(DB_base const *const base) {
+	assert(base);
+	return base->cursor_size();
+}
+int db_cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
+	if(!txn) return DB_EINVAL;
+	int rc = txn->isa->cursor_init(txn, cursor);
+	if(rc < 0) return rc;
+	assert(cursor->isa);
+	return 0;
+}
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
-	return txn->isa->cursor_open(txn, out);
+	DB_cursor *cursor = calloc(1, db_cursor_size(txn->isa));
+	if(!cursor) return DB_ENOMEM;
+	int rc = db_cursor_init(txn, cursor);
+	if(rc < 0) goto cleanup;
+	*out = cursor; cursor = NULL;
+cleanup:
+	free(cursor); cursor = NULL;
+	return rc;
+}
+void db_cursor_destroy(DB_cursor *const cursor) {
+	if(!cursor) return;
+	cursor->isa->cursor_destroy(cursor);
 }
 void db_cursor_close(DB_cursor *cursor) {
 	if(!cursor) return;
-	cursor->isa->cursor_close(cursor); cursor = NULL;
+	db_cursor_destroy(cursor);
+	free(cursor); cursor = NULL;
 }
 int db_cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;

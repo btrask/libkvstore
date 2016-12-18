@@ -107,19 +107,31 @@ typedef struct {
 #define DB_CFG_FILENAME 10 // char const *set / char const **get
 #define DB_CFG_FILEMODE 11 // int *data (e.g. 0644)
 
+DB_base const *db_base_find(char const *const name);
+
+int db_env_init_base(char const *const basename, DB_env *const env);
 int db_env_create_base(char const *const basename, DB_env **const out);
+int db_env_init_custom(DB_base const *const base, DB_env *const env);
 int db_env_create_custom(DB_base const *const base, DB_env **const out);
 
-int db_env_create(DB_env **const out);
+size_t db_env_size(DB_base const *const base);
+int db_env_init(DB_env *const env);
+int db_env_create(DB_env **const out); // Convenience
 int db_env_get_config(DB_env *const env, unsigned const type, void *data);
 int db_env_set_config(DB_env *const env, unsigned const type, void *data);
 int db_env_open0(DB_env *const env);
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, int const mode); // Convenience
-void db_env_close(DB_env *env);
+DB_base const *db_env_base(DB_env *const env);
+void db_env_destroy(DB_env *const env);
+void db_env_close(DB_env *env); // Convenience
 
-int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out);
-int db_txn_commit(DB_txn *txn);
-void db_txn_abort(DB_txn *txn);
+size_t db_txn_size(DB_base const *const base);
+int db_txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn);
+int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out); // Convenience
+int db_txn_commit_destroy(DB_txn *const txn);
+void db_txn_abort_destroy(DB_txn *const txn);
+int db_txn_commit(DB_txn *txn); // Convenience
+void db_txn_abort(DB_txn *txn); // Convenience
 int db_txn_upgrade(DB_txn *const txn, unsigned const flags);
 int db_txn_env(DB_txn *const txn, DB_env **const out);
 int db_txn_parent(DB_txn *const txn, DB_txn **const out);
@@ -144,8 +156,11 @@ int db_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out)
 // Note: Currently, you must manually close all cursors before
 // committing/aborting their transactions. In the future, any cursors
 // remaining open may be closed automatically.
-int db_cursor_open(DB_txn *const txn, DB_cursor **const out);
-void db_cursor_close(DB_cursor *cursor);
+size_t db_cursor_size(DB_base const *const base);
+int db_cursor_init(DB_txn *const txn, DB_cursor *const cursor);
+int db_cursor_open(DB_txn *const txn, DB_cursor **const out); // Convenience
+void db_cursor_destroy(DB_cursor *const cursor);
+void db_cursor_close(DB_cursor *cursor); // Convenience
 int db_cursor_clear(DB_cursor *const cursor);
 int db_cursor_txn(DB_cursor *const cursor, DB_txn **const out);
 int db_cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b);

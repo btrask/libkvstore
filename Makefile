@@ -197,6 +197,8 @@ test: mtest.run general.run
 	rm -rf ./testdb ./testdb-lock
 	$^ mdb ./testdb > $^.mdb.log
 	rm -rf ./testdb ./testdb-lock
+	$^ debug ./testdb > $^.debug.log 2>&1
+	rm -rf ./testdb ./testdb-lock
 	$^ leveldb ./testdb > $^.leveldb.log
 
 $(BUILD_DIR)/test/%: $(BUILD_DIR)/test/%.o $(BUILD_DIR)/libkvstore.a $(STATIC_LIBS)

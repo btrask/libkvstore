@@ -9,15 +9,17 @@ DB_base const db_base_##_name[1] = {{ \
 	.version = 0, \
 	.name = #_name, \
 	\
-	.env_create = db__env_create, \
+	.env_size = db__env_size, \
+	.env_init = db__env_init, \
 	.env_get_config = db__env_get_config, \
 	.env_set_config = db__env_set_config, \
 	.env_open0 = db__env_open0, \
-	.env_close = db__env_close, \
+	.env_destroy = db__env_destroy, \
 	\
-	.txn_begin = db__txn_begin, \
-	.txn_commit = db__txn_commit, \
-	.txn_abort = db__txn_abort, \
+	.txn_size = db__txn_size, \
+	.txn_begin_init = db__txn_begin_init, \
+	.txn_commit_destroy = db__txn_commit_destroy, \
+	.txn_abort_destroy = db__txn_abort_destroy, \
 	.txn_upgrade = db__txn_upgrade, \
 	.txn_env = db__txn_env, \
 	.txn_parent = db__txn_parent, \
@@ -33,8 +35,9 @@ DB_base const db_base_##_name[1] = {{ \
 	.countr = db__countr, \
 	.delr = db__delr, \
 	\
-	.cursor_open = db__cursor_open, \
-	.cursor_close = db__cursor_close, \
+	.cursor_size = db__cursor_size, \
+	.cursor_init = db__cursor_init, \
+	.cursor_destroy = db__cursor_destroy, \
 	.cursor_clear = db__cursor_clear, \
 	.cursor_txn = db__cursor_txn, \
 	.cursor_cmp = db__cursor_cmp, \
@@ -57,15 +60,17 @@ struct DB_base {
 	char const *name; // For debugging and introspection.
 
 	// V0 methods
-	int (*env_create)(DB_env **const out);
+	size_t (*env_size)(void);
+	int (*env_init)(DB_env *const env);
 	int (*env_get_config)(DB_env *const env, unsigned const type, void *data);
 	int (*env_set_config)(DB_env *const env, unsigned const type, void *data);
 	int (*env_open0)(DB_env *const env);
-	void (*env_close)(DB_env *env);
+	void (*env_destroy)(DB_env *const env);
 
-	int (*txn_begin)(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out);
-	int (*txn_commit)(DB_txn *txn);
-	void (*txn_abort)(DB_txn *txn);
+	size_t (*txn_size)(void);
+	int (*txn_begin_init)(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn);
+	int (*txn_commit_destroy)(DB_txn *const txn);
+	void (*txn_abort_destroy)(DB_txn *const txn);
 	int (*txn_upgrade)(DB_txn *const txn, unsigned const flags);
 	int (*txn_env)(DB_txn *const txn, DB_env **const out);
 	int (*txn_parent)(DB_txn *const txn, DB_txn **const out);
@@ -81,8 +86,9 @@ struct DB_base {
 	int (*countr)(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
 	int (*delr)(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
 
-	int (*cursor_open)(DB_txn *const txn, DB_cursor **const out);
-	void (*cursor_close)(DB_cursor *cursor);
+	size_t (*cursor_size)(void);
+	int (*cursor_init)(DB_txn *const txn, DB_cursor *const cursor);
+	void (*cursor_destroy)(DB_cursor *const cursor);
 	int (*cursor_clear)(DB_cursor *const cursor);
 	int (*cursor_txn)(DB_cursor *const cursor, DB_txn **const out);
 	int (*cursor_cmp)(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b);
