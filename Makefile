@@ -83,6 +83,7 @@ LIBS := -lpthread
 OBJECTS := \
 	$(BUILD_DIR)/src/db_base_dynamic.o \
 	$(BUILD_DIR)/src/db_helper.o \
+	$(BUILD_DIR)/src/db_wrbuf.o \
 	$(BUILD_DIR)/src/db_schema.o
 
 SHARED_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.so
