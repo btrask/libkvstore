@@ -18,14 +18,17 @@ struct DB_txn {
 	DB_env *env;
 	DB_txn *parent;
 	DB_txn *child;
-	DB_txn *txn;
 	DB_cursor *cursor;
+	// Inner txn
 };
 struct DB_cursor {
 	DB_base const *isa;
 	DB_txn *txn;
-	DB_cursor *cursor;
+	// Inner cursor
 };
+
+#define TXN_INNER(txn) ((txn)+1)
+#define CURSOR_INNER(cursor) ((cursor)+1)
 
 #define LOG(env, rc) do { \
 	if((env)->log->fn) { \
@@ -94,7 +97,8 @@ DB_FN void db__env_destroy(DB_env *const env) {
 }
 
 DB_FN size_t db__txn_size(DB_env *const env) {
-	return sizeof(struct DB_txn);
+	assert(env);
+	return sizeof(struct DB_txn)+db_txn_size(env->env);
 }
 DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn) {
 	if(!env) return DB_EINVAL;
@@ -104,7 +108,7 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 	int rc = 0;
 	txn->isa = db_base_debug;
 
-	rc = db_txn_begin(env->env, parent ? parent->txn : NULL, flags, &txn->txn);
+	rc = db_txn_begin_init(env->env, parent ? TXN_INNER(parent) : NULL, flags, TXN_INNER(txn));
 	if(rc < 0) goto cleanup;
 	txn->env = env;
 	txn->parent = parent;
@@ -124,7 +128,7 @@ DB_FN int db__txn_commit_destroy(DB_txn *const txn) {
 		if(rc < 0) goto cleanup;
 	}
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
-	rc = db_txn_commit(txn->txn); txn->txn = NULL;
+	rc = db_txn_commit_destroy(TXN_INNER(txn));
 	if(rc < 0) goto cleanup;
 cleanup:
 	LOG(txn->env, rc);
@@ -136,9 +140,9 @@ DB_FN void db__txn_abort_destroy(DB_txn *const txn) {
 	if(txn->child) {
 		db_txn_abort(txn->child); txn->child = NULL;
 	}
-	if(txn->txn) LOG(txn->env, 0); // Don't log abort during commit.
+	if(TXN_INNER(txn)->isa) LOG(txn->env, 0); // Don't log abort during commit.
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
-	db_txn_abort(txn->txn); txn->txn = NULL;
+	db_txn_abort_destroy(TXN_INNER(txn));
 	if(txn->parent) txn->parent->child = NULL;
 	txn->isa = NULL;
 	txn->env = NULL;
@@ -147,7 +151,7 @@ DB_FN void db__txn_abort_destroy(DB_txn *const txn) {
 }
 DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
-	int rc = db_txn_upgrade(txn->txn, flags);
+	int rc = db_txn_upgrade(TXN_INNER(txn), flags);
 	LOG(txn->env, rc);
 	return rc;
 }
@@ -165,12 +169,12 @@ DB_FN int db__txn_parent(DB_txn *const txn, DB_txn **const out) {
 }
 DB_FN int db__txn_get_flags(DB_txn *const txn, unsigned *const flags) {
 	if(!txn) return DB_EINVAL;
-	int rc = db_txn_get_flags(txn->txn, flags);
+	int rc = db_txn_get_flags(TXN_INNER(txn), flags);
 	LOG(txn->env, rc);
 	return rc;
 }
 DB_FN int db__txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *const b) {
-	return db_txn_cmp(txn->txn, a, b);
+	return db_txn_cmp(TXN_INNER(txn), a, b);
 }
 DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
@@ -184,44 +188,45 @@ DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 
 DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
 	if(!txn) return DB_EINVAL;
-	int rc = db_get(txn->txn, key, data);
+	int rc = db_get(TXN_INNER(txn), key, data);
 	LOG(txn->env, rc);
 	return rc;
 }
 DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
-	int rc = db_put(txn->txn, key, data, flags);
+	int rc = db_put(TXN_INNER(txn), key, data, flags);
 	LOG(txn->env, rc);
 	return rc;
 }
 DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
-	int rc = db_del(txn->txn, key, flags);
+	int rc = db_del(TXN_INNER(txn), key, flags);
 	LOG(txn->env, rc);
 	return rc;
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn) return DB_EINVAL;
-	int rc = db_cmd(txn->txn, buf, len);
+	int rc = db_cmd(TXN_INNER(txn), buf, len);
 	LOG(txn->env, rc);
 	return rc;
 }
 
 DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
 	if(!txn) return DB_EINVAL;
-	int rc = db_countr(txn->txn, range, out);
+	int rc = db_countr(TXN_INNER(txn), range, out);
 	LOG(txn->env, rc);
 	return rc;
 }
 DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
 	if(!txn) return DB_EINVAL;
-	int rc = db_delr(txn->txn, range, out);
+	int rc = db_delr(TXN_INNER(txn), range, out);
 	LOG(txn->env, rc);
 	return rc;
 }
 
 DB_FN size_t db__cursor_size(DB_txn *const txn) {
-	return sizeof(struct DB_cursor);
+	assert(txn);
+	return sizeof(struct DB_cursor)+db_cursor_size(TXN_INNER(txn));
 }
 DB_FN int db__cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 	if(!txn) return DB_EINVAL;
@@ -230,7 +235,7 @@ DB_FN int db__cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 	int rc = 0;
 	cursor->isa = db_base_debug;
 
-	rc = db_cursor_open(txn->txn, &cursor->cursor);
+	rc = db_cursor_init(TXN_INNER(txn), CURSOR_INNER(cursor));
 	if(rc < 0) goto cleanup;
 	cursor->txn = txn;
 cleanup:
@@ -241,14 +246,14 @@ cleanup:
 DB_FN void db__cursor_destroy(DB_cursor *const cursor) {
 	if(!cursor) return;
 	LOG(cursor->txn->env, 0);
-	db_cursor_close(cursor->cursor); cursor->cursor = NULL;
+	db_cursor_destroy(CURSOR_INNER(cursor));
 	cursor->isa = NULL;
 	cursor->txn = NULL;
 	assert_zeroed(cursor, 1);
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_clear(cursor->cursor);
+	int rc = db_cursor_clear(CURSOR_INNER(cursor));
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
@@ -260,62 +265,62 @@ DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 }
 DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor);
-	return db_cursor_cmp(cursor->cursor, a, b);
+	return db_cursor_cmp(CURSOR_INNER(cursor), a, b);
 }
 
 DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const data) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_current(cursor->cursor, key, data);
+	int rc = db_cursor_current(CURSOR_INNER(cursor), key, data);
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
 DB_FN int db__cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_seek(cursor->cursor, key, data, dir);
+	int rc = db_cursor_seek(CURSOR_INNER(cursor), key, data, dir);
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
 DB_FN int db__cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_first(cursor->cursor, key, data, dir);
+	int rc = db_cursor_first(CURSOR_INNER(cursor), key, data, dir);
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
 DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_next(cursor->cursor, key, data, dir);
+	int rc = db_cursor_next(CURSOR_INNER(cursor), key, data, dir);
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
 
 DB_FN int db__cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_seekr(cursor->cursor, range, key, data, dir);
+	int rc = db_cursor_seekr(CURSOR_INNER(cursor), range, key, data, dir);
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
 DB_FN int db__cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_firstr(cursor->cursor, range, key, data, dir);
+	int rc = db_cursor_firstr(CURSOR_INNER(cursor), range, key, data, dir);
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
 DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_nextr(cursor->cursor, range, key, data, dir);
+	int rc = db_cursor_nextr(CURSOR_INNER(cursor), range, key, data, dir);
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
 
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_put(cursor->cursor, key, data, flags);
+	int rc = db_cursor_put(CURSOR_INNER(cursor), key, data, flags);
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
 DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_del(cursor->cursor, flags);
+	int rc = db_cursor_del(CURSOR_INNER(cursor), flags);
 	LOG(cursor->txn->env, rc);
 	return rc;
 }
