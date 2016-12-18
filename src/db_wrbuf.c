@@ -4,6 +4,29 @@
 #include <string.h>
 #include "db_wrbuf.h"
 
+int db_wrbuf_init(DB_wrbuf *const buf, DB_cursor *const temp, DB_cursor *const main) {
+	if(!buf) return DB_EINVAL;
+	if(!main) return DB_EINVAL;
+	buf->temp = temp;
+	buf->main = main;
+	return db_wrbuf_clear(buf);
+}
+void db_wrbuf_destroy(DB_wrbuf *const buf) {
+	if(!buf) return;
+	buf->state = DB_WRBUF_INVALID;
+	db_cursor_close(buf->temp); buf->temp = NULL;
+	db_cursor_close(buf->main); buf->main = NULL;
+}
+int db_wrbuf_clear(DB_wrbuf *const buf) {
+	if(!buf) return DB_EINVAL;
+	if(!buf->temp) {
+		return db_cursor_clear(buf->main);
+	} else {
+		buf->state = DB_WRBUF_INVALID;
+		return 0;
+	}
+}
+
 static int update(DB_wrbuf *const buf, int rc1, DB_val *const k1, DB_val *const d1, int const rc2, DB_val const *const k2, DB_val const *const d2, int const dir, DB_val *const key, DB_val *const data) {
 	if(!buf->temp) {
 		if(key) *key = *k2;

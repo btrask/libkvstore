@@ -7,8 +7,8 @@
 // A write buffer is a pseudo-cursor that wraps two regular cursors that
 // buffers writes and deletions from the main cursor to the temp cursor.
 
-// temp cursor needs: cmp, current, seek, first, next, put
-// main cursor needs: current, seek, first, next
+// temp cursor needs: close, current, seek, first, next, put, cmp
+// main cursor needs: close, current, seek, first, next, clear
 
 typedef enum {
 	DB_WRBUF_INVALID = 0,
@@ -22,6 +22,10 @@ typedef struct {
 	DB_cursor *temp;
 	DB_cursor *main;
 } DB_wrbuf;
+
+int db_wrbuf_init(DB_wrbuf *const buf, DB_cursor *const temp, DB_cursor *const main);
+void db_wrbuf_destroy(DB_wrbuf *const buf);
+int db_wrbuf_clear(DB_wrbuf *const buf);
 
 int db_wrbuf_current(DB_wrbuf *const buf, DB_val *const key, DB_val *const data);
 int db_wrbuf_seek(DB_wrbuf *const buf, DB_val *const key, DB_val *const data, int const dir);
