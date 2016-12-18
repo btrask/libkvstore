@@ -7,6 +7,9 @@
 // A write buffer is a pseudo-cursor that wraps two regular cursors that
 // buffers writes and deletions from the main cursor to the temp cursor.
 
+// temp cursor needs: cmp, current, seek, first, next, put
+// main cursor needs: current, seek, first, next
+
 typedef enum {
 	DB_WRBUF_INVALID = 0,
 	DB_WRBUF_EQUAL,

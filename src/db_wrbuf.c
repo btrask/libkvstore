@@ -20,7 +20,7 @@ static int update(DB_wrbuf *const buf, int rc1, DB_val *const k1, DB_val *const 
 		if(DB_NOTFOUND == rc1) x = +1;
 		if(DB_NOTFOUND == rc2) x = -1;
 		if(0 == x) {
-			x = db_cursor_cmp(buf->main, k1, k2) * (dir ? dir : 1);
+			x = db_cursor_cmp(buf->temp, k1, k2) * (dir ? dir : 1);
 		}
 		if(x > 0) {
 			buf->state = DB_WRBUF_MAIN;
