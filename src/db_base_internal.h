@@ -67,7 +67,7 @@ struct DB_base {
 	int (*env_open0)(DB_env *const env);
 	void (*env_destroy)(DB_env *const env);
 
-	size_t (*txn_size)(void);
+	size_t (*txn_size)(DB_env *const env);
 	int (*txn_begin_init)(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn);
 	int (*txn_commit_destroy)(DB_txn *const txn);
 	void (*txn_abort_destroy)(DB_txn *const txn);
@@ -86,7 +86,7 @@ struct DB_base {
 	int (*countr)(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
 	int (*delr)(DB_txn *const txn, DB_range const *const range, uint64_t *const out);
 
-	size_t (*cursor_size)(void);
+	size_t (*cursor_size)(DB_txn *const txn);
 	int (*cursor_init)(DB_txn *const txn, DB_cursor *const cursor);
 	void (*cursor_destroy)(DB_cursor *const cursor);
 	int (*cursor_clear)(DB_cursor *const cursor);

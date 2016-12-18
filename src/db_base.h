@@ -125,7 +125,7 @@ DB_base const *db_env_base(DB_env *const env);
 void db_env_destroy(DB_env *const env);
 void db_env_close(DB_env *env); // Convenience
 
-size_t db_txn_size(DB_base const *const base);
+size_t db_txn_size(DB_env *const env);
 int db_txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn);
 int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out); // Convenience
 int db_txn_commit_destroy(DB_txn *const txn);
@@ -156,7 +156,7 @@ int db_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out)
 // Note: Currently, you must manually close all cursors before
 // committing/aborting their transactions. In the future, any cursors
 // remaining open may be closed automatically.
-size_t db_cursor_size(DB_base const *const base);
+size_t db_cursor_size(DB_txn *const txn);
 int db_cursor_init(DB_txn *const txn, DB_cursor *const cursor);
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out); // Convenience
 void db_cursor_destroy(DB_cursor *const cursor);

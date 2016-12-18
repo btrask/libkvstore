@@ -119,9 +119,9 @@ void db_env_close(DB_env *env) {
 	free(env); env = NULL;
 }
 
-size_t db_txn_size(DB_base const *const base) {
-	assert(base);
-	return base->txn_size();
+size_t db_txn_size(DB_env *const env) {
+	assert(env);
+	return env->isa->txn_size(env);
 }
 int db_txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn) {
 	if(!env) return DB_EINVAL;
@@ -132,7 +132,7 @@ int db_txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned const fl
 }
 int db_txn_begin(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn **const out) {
 	if(!env) return DB_EINVAL;
-	DB_txn *txn = calloc(1, db_txn_size(env->isa));
+	DB_txn *txn = calloc(1, db_txn_size(env));
 	if(!txn) return DB_ENOMEM;
 	int rc = db_txn_begin_init(env, parent, flags, txn);
 	if(rc < 0) goto cleanup;
@@ -212,9 +212,9 @@ int db_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out)
 	return txn->isa->delr(txn, range, out);
 }
 
-size_t db_cursor_size(DB_base const *const base) {
-	assert(base);
-	return base->cursor_size();
+size_t db_cursor_size(DB_txn *const txn) {
+	assert(txn);
+	return txn->isa->cursor_size(txn);
 }
 int db_cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 	if(!txn) return DB_EINVAL;
@@ -225,7 +225,7 @@ int db_cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 }
 int db_cursor_open(DB_txn *const txn, DB_cursor **const out) {
 	if(!txn) return DB_EINVAL;
-	DB_cursor *cursor = calloc(1, db_cursor_size(txn->isa));
+	DB_cursor *cursor = calloc(1, db_cursor_size(txn));
 	if(!cursor) return DB_ENOMEM;
 	int rc = db_cursor_init(txn, cursor);
 	if(rc < 0) goto cleanup;

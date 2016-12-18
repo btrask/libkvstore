@@ -93,7 +93,7 @@ DB_FN void db__env_destroy(DB_env *const env) {
 	assert_zeroed(env, 1);
 }
 
-DB_FN size_t db__txn_size(void) {
+DB_FN size_t db__txn_size(DB_env *const env) {
 	return sizeof(struct DB_txn);
 }
 DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn) {
@@ -220,7 +220,7 @@ DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 	return rc;
 }
 
-DB_FN size_t db__cursor_size(void) {
+DB_FN size_t db__cursor_size(DB_txn *const txn) {
 	return sizeof(struct DB_cursor);
 }
 DB_FN int db__cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
