@@ -35,6 +35,9 @@ int db_wrbuf_next(DB_wrbuf *const buf, DB_val *const key, DB_val *const data, in
 int db_wrbuf_put(DB_wrbuf *const buf, DB_val *const key, DB_val *const data, unsigned const flags);
 int db_wrbuf_del(DB_wrbuf *const buf, unsigned const flags);
 
+// Equivalent to db_del. Can be much faster than operating on a temporary cursor.
+int db_wrbuf_del_direct(DB_txn *const temp, DB_val *const key, unsigned const flags);
+
 enum {
 	DB_WRBUF_PUT = 'P',
 	DB_WRBUF_DEL = 'D',

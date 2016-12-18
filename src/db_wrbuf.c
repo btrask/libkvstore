@@ -1,6 +1,7 @@
 // Copyright 2014-2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
+#include <stdio.h>
 #include <string.h>
 #include "db_wrbuf.h"
 
@@ -178,6 +179,17 @@ int db_wrbuf_del(DB_wrbuf *const buf, unsigned const flags) {
 	*d = (DB_val){ sizeof(tombstone), &tombstone };
 	assert(buf->temp);
 	rc = db_cursor_put(buf->temp, k, d, 0);
+	if(rc < 0) return rc;
+	return 0;
+}
+
+int db_wrbuf_del_direct(DB_txn *const temp, DB_val *const key, unsigned const flags) {
+	if(!temp) return DB_EACCES;
+	if(flags) return DB_EINVAL;
+	char tombstone = DB_WRBUF_DEL;
+	DB_val k[1] = { *key };
+	DB_val d[1] = {{ sizeof(tombstone), &tombstone }};
+	int rc = db_put(temp, k, d, 0);
 	if(rc < 0) return rc;
 	return 0;
 }

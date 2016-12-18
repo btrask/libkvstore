@@ -7,19 +7,14 @@
 #include <stdlib.h>
 #include "liblmdb/lmdb.h"
 #include "db_base_internal.h"
+#include "db_wrbuf.h"
 #include "common.h"
-
-typedef enum {
-	S_INVALID = 0,
-	S_EQUAL,
-	S_MAIN,
-	S_TEMP,
-} cstate;
 
 struct DB_env {
 	DB_base const *isa;
 	DB_env *main;
 	DB_env *temp;
+	DB_cmd_data cmd[1];
 	DB_commit_data commit[1];
 };
 struct DB_txn {
@@ -34,9 +29,7 @@ struct DB_txn {
 struct DB_cursor {
 	DB_base const *isa;
 	DB_txn *txn;
-	DB_cursor *main;
-	DB_cursor *temp;
-	cstate state;
+	DB_wrbuf wrbuf[1];
 };
 
 DB_FN size_t db__env_size(void) {
@@ -59,6 +52,7 @@ cleanup:
 DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
 	switch(type) {
+	case DB_CFG_COMMAND: *(DB_cmd_data *)data = *env->cmd; return 0;
 	case DB_CFG_INNERDB: *(DB_env **)data = env->main; return 0;
 	case DB_CFG_COMMIT: *(DB_commit_data *)data = *env->commit; return 0;
 	default: return db_env_get_config(env->main, type, data);
@@ -71,6 +65,7 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 	// Ownership becomes a little bit complex...
 	switch(type) {
 	case DB_CFG_TXNSIZE: return DB_ENOTSUP; // TODO
+	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
 	case DB_CFG_INNERDB:
 		db_env_close(env->main);
 		env->main = (DB_env *)data;
@@ -212,29 +207,28 @@ DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 }
 
 DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
-	if(!txn) return DB_EINVAL;
-	return DB_ENOTSUP; // TODO
+	return db_helper_get(txn, key, data);
 }
 DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
-	if(!txn) return DB_EINVAL;
-	return DB_ENOTSUP; // TODO
+	return db_helper_put(txn, key, data, flags); // TODO
 }
 DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
-	return DB_ENOTSUP; // TODO
+	return db_wrbuf_del_direct(txn->temp, key, flags); // TODO
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn) return DB_EINVAL;
-	return DB_ENOTSUP; // TODO
+	if(!txn->env->cmd->fn) return DB_EINVAL;
+	int rc = txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len); // TODO
+	assert(txn->isa); // Simple check that we weren't committed/aborted.
+	return rc;
 }
 
 DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
-	if(!txn) return DB_EINVAL;
-	return DB_ENOTSUP; // TODO
+	return db_helper_countr(txn, range, out);
 }
 DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
-	if(!txn) return DB_EINVAL;
-	return DB_ENOTSUP; // TODO
+	return db_helper_delr(txn, range, out); // TODO
 }
 
 DB_FN size_t db__cursor_size(DB_txn *const txn) {
@@ -244,32 +238,36 @@ DB_FN int db__cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 	if(!txn) return DB_EINVAL;
 	if(!cursor) return DB_EINVAL;
 	assert_zeroed(cursor, 1);
+	DB_cursor *t = NULL;
+	DB_cursor *m = NULL;
 	int rc = 0;
 	cursor->isa = db_base_distributed;
 	cursor->txn = txn; // TODO: Open on root txn?
 
-	cursor->state = S_INVALID;
-	rc = db_cursor_open(txn->main, &cursor->main);
+	rc = db_cursor_open(txn->temp, &t);
 	if(rc < 0) goto cleanup;
-	rc = db_cursor_open(txn->temp, &cursor->temp);
+	rc = db_cursor_open(txn->main, &m);
+	if(rc < 0) goto cleanup;
+	rc = db_wrbuf_init(cursor->wrbuf, t, m);
 	if(rc < 0) goto cleanup;
 cleanup:
-	if(rc < 0) db_cursor_destroy(cursor);
+	if(rc < 0) {
+		db_cursor_close(t); t = NULL;
+		db_cursor_close(m); m = NULL;
+		db_cursor_destroy(cursor);
+	}
 	return rc;
 }
 DB_FN void db__cursor_destroy(DB_cursor *const cursor) {
 	if(!cursor) return;
-	db_cursor_close(cursor->main); cursor->main = NULL;
-	db_cursor_close(cursor->temp); cursor->temp = NULL;
+	db_wrbuf_destroy(cursor->wrbuf);
 	cursor->isa = NULL;
 	cursor->txn = NULL;
-	cursor->state = 0;
 	assert_zeroed(cursor, 1);
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
-	cursor->state = S_INVALID;
-	return 0;
+	return db_wrbuf_clear(cursor->wrbuf);
 }
 DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 	if(!cursor) return DB_EINVAL;
@@ -279,64 +277,24 @@ DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 }
 DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor);
-	return db_cursor_cmp(cursor->main, a, b);
+	return db_cursor_cmp(cursor->wrbuf->main, a, b);
 }
 
-static int db_cursor_update(DB_cursor *const cursor, int rc1, DB_val *const k1, DB_val *const d1, int const rc2, DB_val const *const k2, DB_val const *const d2, int const dir, DB_val *const key, DB_val *const data) {
-	return DB_ENOTSUP; // TODO
-}
 DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const data) {
 	if(!cursor) return DB_EINVAL;
-	if(S_INVALID == cursor->state) return DB_EINVAL;
-	if(S_MAIN == cursor->state || S_EQUAL == cursor->state) {
-		return db_cursor_current(cursor->main, key, data);
-	}
-	DB_val k[1], v[1];
-	int rc = db_cursor_current(cursor->temp, k, v);
-	// TODO: Trim junk
-	return rc;
+	return db_wrbuf_current(cursor->wrbuf, key, data);
 }
 DB_FN int db__cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	DB_range range[1]; // TODO
-	DB_val k1[1] = { *key }, d1[1];
-	DB_val k2[1] = { *key }, d2[1];
-	int rc1 = db_cursor_seekr(cursor->temp, range, k1, d1, dir);
-	int rc2 = db_cursor_seek (cursor->main,        k2, d2, dir);
-	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, dir ? key : NULL, data);
-	// Note: We pass NULL for the output key to emulate MDB_SET semantics,
-	// which doesn't touch the key at all and leaves it pointing to the
-	// user's copy. For MDB_SET_KEY behavior, you must make an extra call
-	// to db_cursor_current.
-	// Note: This only applies when dir is 0.
+	return db_wrbuf_seek(cursor->wrbuf, key, data, dir);
 }
 DB_FN int db__cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	if(0 == dir) return DB_EINVAL;
-	DB_range range[1]; // TODO
-	DB_val k1[1], d1[1], k2[1], d2[1];
-	int rc1 = db_cursor_firstr(cursor->temp, range, k1, d1, dir);
-	int rc2 = db_cursor_first (cursor->main,        k2, d2, dir);
-	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, key, data);
+	return db_wrbuf_first(cursor->wrbuf, key, data, dir);
 }
 DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	if(0 == dir) return DB_EINVAL;
-	int rc1, rc2;
-	DB_range range[1]; // TODO
-	DB_val k1[1], d1[1], k2[1], d2[1];
-	if(S_MAIN != cursor->state) {
-		rc1 = db_cursor_nextr(cursor->temp, range, k1, d1, dir);
-	} else {
-		rc1 = db_cursor_current(cursor->temp, k1, d1);
-		if(DB_EINVAL == rc1) rc1 = DB_NOTFOUND;
-	}
-	if(S_TEMP != cursor->state) {
-		rc2 = db_cursor_next(cursor->main, k2, d2, dir);
-	} else {
-		rc2 = db_cursor_current(cursor->main, k2, d2);
-	}
-	return db_cursor_update(cursor, rc1, k1, d1, rc2, k2, d2, dir, key, data);
+	return db_wrbuf_next(cursor->wrbuf, key, data, dir);
 }
 
 DB_FN int db__cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
@@ -351,11 +309,11 @@ DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range,
 
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	return DB_ENOTSUP; // TODO
+	return db_wrbuf_put(cursor->wrbuf, key, data, flags); // TODO
 }
 DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	return DB_ENOTSUP; // TODO
+	return db_wrbuf_del(cursor->wrbuf, flags); // TODO
 }
 
 DB_BASE_V0(distributed)

@@ -568,19 +568,14 @@ DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsi
 }
 DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
-	if(flags) return DB_EINVAL;
-	if(DB_RDONLY & txn->flags) return DB_EACCES;
-	char tombstone = DB_WRBUF_DEL;
-	DB_val k[1] = { *key };
-	DB_val d[1] = {{ sizeof(tombstone), &tombstone }};
-	int rc = db_put(txn->tmptxn, k, d, 0);
-	if(rc < 0) return rc;
-	return 0;
+	return db_wrbuf_del_direct(txn->tmptxn, key, flags);
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn) return DB_EINVAL;
 	if(!txn->env->cmd->fn) return DB_EINVAL;
-	return txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len);
+	int rc = txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len);
+	assert(txn->isa); // Simple check that we weren't committed/aborted.
+	return rc;
 }
 
 DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
