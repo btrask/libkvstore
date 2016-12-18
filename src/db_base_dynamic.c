@@ -21,15 +21,27 @@ DB_base const *db_base_find(char const *const name) {
 	if(!name) return db_base_default;
 	DB_base const *base = db_base_default;
 	if(0 == strcmp(name, "default")) base = db_base_default;
+#ifdef DB_BASE_MDB
 	if(0 == strcmp(name, "mdb")) base = db_base_mdb;
+#endif
+#ifdef DB_BASE_LEVELDB
 	if(0 == strcmp(name, "leveldb")) base = db_base_leveldb;
+#endif
 #ifdef DB_BASE_ROCKSDB
 	if(0 == strcmp(name, "rocksdb")) base = db_base_rocksdb;
 #endif
+#ifdef DB_BASE_HYPER
 //	if(0 == strcmp(name, "hyper")) base = db_base_hyper;
-//	if(0 == strcmp(name, "lsmdb")) base = db_base_lsmdb;
+#endif
+#ifdef DB_BASE_LSMDB
+	if(0 == strcmp(name, "lsmdb")) base = db_base_lsmdb;
+#endif
+#ifdef DB_BASE_DEBUG
 	if(0 == strcmp(name, "debug")) base = db_base_debug;
+#endif
+#ifdef DB_BASE_DISTRIBUTED
 //	if(0 == strcmp(name, "distributed")) base = db_base_distributed;
+#endif
 	return base;
 }
 
