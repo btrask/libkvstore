@@ -9,8 +9,7 @@
 #include <unistd.h> // For unlink(2)
 #include <sys/resource.h>
 
-// TODO: Proper Rocks and Hyper support.
-#ifdef DB_BASE_ROCKSDB
+#ifdef LEVELDB_AS_ROCKSDB
 #include "rocks_wrapper.h"
 #else
 #include <leveldb/c.h>
@@ -834,5 +833,9 @@ DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	return 0;
 }
 
+#ifdef LEVELDB_AS_ROCKSDB
+DB_BASE_V0(rocksdb)
+#else
 DB_BASE_V0(leveldb)
+#endif
 

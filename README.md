@@ -81,7 +81,7 @@ Known Issues
 
 - libkvstore is still under heavy development and the API is still in flux.
 - The test suite is nowhere near thorough.
-- The RocksDB and HyperLevelDB back-ends are currently broken.
+- The HyperLevelDB and LSMDB back-ends are currently broken.
 - Custom comparators are currently unsupported in any of the included back-ends due to limitations with LMDB (which is even used in the LevelDB back-end).
 - Disk formats are not explicitly detected. If your application supports multiple back-ends, you may need to track which one is used manually.
 
