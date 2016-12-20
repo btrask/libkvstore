@@ -5,10 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "db_prefix.h"
-#include "db_base_internal.h"
 #include "common.h"
-
-static DB_base const db_base_prefix[1];
 
 struct DB_cursor {
 	DB_base const *isa;
@@ -61,23 +58,24 @@ static void key_strip(DB_cursor *const cursor, DB_val const *const src, DB_val *
 }
 
 
-DB_FN size_t db__cursor_size(DB_txn *const txn) {
-	return sizeof(struct DB_cursor)+db_cursor_size(txn);
+DB_FN size_t db__cursor_size(DB_txn *const fake) {
+	DB_prefix_txn const *const txn = (DB_prefix_txn *)fake;
+	return sizeof(struct DB_cursor)+db_cursor_size(txn->txn);
 }
-
-int db_prefix_cursor_init(DB_txn *const txn, DB_val const *const pfx, DB_cursor *const cursor) {
+DB_FN int db__cursor_init(DB_txn *const fake, DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
-	if(!txn) return DB_EINVAL;
+	if(!fake) return DB_EINVAL;
+	DB_prefix_txn const *const txn = (DB_prefix_txn *)fake;
 	assert_zeroed(cursor, 1);
 	int rc = 0;
 	cursor->isa = db_base_prefix;
 
-	rc = db_cursor_init(txn, CURSOR_INNER(cursor));
+	rc = db_cursor_init(txn->txn, CURSOR_INNER(cursor));
 	if(rc < 0) goto cleanup;
 
 	cursor->key_max = 512;
 	DB_env *env = NULL;
-	(void) db_txn_env(txn, &env);
+	(void) db_txn_env(txn->txn, &env);
 	(void) db_env_get_config(env, DB_CFG_KEYSIZE, &cursor->key_max);
 	for(size_t i = 0; i < numberof(cursor->bufs); i++) {
 		cursor->bufs[i] = malloc(cursor->key_max);
@@ -85,26 +83,15 @@ int db_prefix_cursor_init(DB_txn *const txn, DB_val const *const pfx, DB_cursor 
 		if(rc < 0) goto cleanup;
 	}
 
-	*cursor->pfx = (DB_val){ pfx->size, malloc(pfx->size+1) };
+	*cursor->pfx = (DB_val){ txn->pfx->size, malloc(txn->pfx->size+1) };
 	if(!cursor->pfx->data) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
-	memcpy(cursor->pfx->data, pfx->data, pfx->size);
+	memcpy(cursor->pfx->data, txn->pfx->data, txn->pfx->size);
 
 cleanup:
 	if(rc < 0) db_cursor_destroy(cursor);
 	return rc;
 }
-int db_prefix_cursor_create(DB_txn *const txn, DB_val const *const pfx, DB_cursor **const out) {
-	DB_cursor *cursor = calloc(1, db__cursor_size(txn));
-	if(!cursor) return DB_ENOMEM;
-	int rc = db_prefix_cursor_init(txn, pfx, cursor);
-	if(rc < 0) goto cleanup;
-	*out = cursor; cursor = NULL;
-cleanup:
-	free(cursor); cursor = NULL;
-	return rc;
-}
-
 DB_FN void db__cursor_destroy(DB_cursor *const cursor) {
 	if(!cursor) return;
 	db_cursor_destroy(CURSOR_INNER(cursor));
@@ -125,7 +112,7 @@ DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 }
 DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 	if(!cursor) return DB_EINVAL;
-	return db_cursor_txn(CURSOR_INNER(cursor), out);
+	return DB_ENOTSUP;
 }
 DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor);
@@ -197,10 +184,11 @@ DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	return db_cursor_del(CURSOR_INNER(cursor), flags);
 }
 
-static DB_base const db_base_prefix[1] = {{
+DB_base const db_base_prefix[1] = {{
 	.version = 0,
 	.name = "prefix",
 	.cursor_size = db__cursor_size,
+	.cursor_init = db__cursor_init,
 	.cursor_destroy = db__cursor_destroy,
 	.cursor_clear = db__cursor_clear,
 	.cursor_txn = db__cursor_txn,

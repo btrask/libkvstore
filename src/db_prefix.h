@@ -1,12 +1,23 @@
 // Copyright 2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
-#include "db_base.h"
+#include "db_base_internal.h"
 
 // A prefix cursor wraps a normal cursor, transparently prefixing all keys
 // written to the underlying data store, and stripping all prefixes read
 // from it.
 
-int db_prefix_cursor_init(DB_txn *const txn, DB_val const *const pfx, DB_cursor *const cursor);
-int db_prefix_cursor_create(DB_txn *const txn, DB_val const *const pfx, DB_cursor **const out);
+// Usage:
+// 1. Initialize a fake transaction as below
+// 2. Call db_cursor_init/open, casting the transaction to DB_txn
+
+// Yes, this is kind of ugly, but it allows arbitrary nesting.
+
+extern DB_base const db_base_prefix[1];
+
+typedef struct {
+	DB_base const *isa;
+	DB_val const *pfx;
+	DB_txn *txn;
+} DB_prefix_txn;
 
