@@ -17,7 +17,7 @@ extern DB_base const db_base_prefix[1];
 
 typedef struct {
 	DB_base const *isa;
-	DB_val const *pfx;
+	DB_val pfx[1];
 	DB_txn *txn;
 } DB_prefix_txn;
 

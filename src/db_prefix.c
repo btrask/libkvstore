@@ -197,5 +197,10 @@ DB_base const db_base_prefix[1] = {{
 	.cursor_seek = db__cursor_seek,
 	.cursor_first = db__cursor_first,
 	.cursor_next = db__cursor_next,
+	.cursor_seekr = db__cursor_seekr,
+	.cursor_firstr = db__cursor_firstr,
+	.cursor_nextr = db__cursor_nextr,
+	.cursor_put = db__cursor_put,
+	.cursor_del = db__cursor_del,
 }};
 

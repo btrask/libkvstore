@@ -46,8 +46,9 @@ struct DB_txn {
 struct DB_cursor {
 	DB_base const *isa;
 	DB_txn *txn;
-	DB_wrbuf wrbuf[1];
+	// Inner cursor
 };
+#define CURSOR_INNER(c) ((c)+1)
 
 
 // DEBUG
@@ -567,7 +568,7 @@ DB_FN int db__put(DB_txn *const txn, DB_val const *const key, DB_val *const data
 }
 DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
-	return db_wrbuf_del_direct(txn->tmptxn, key, flags);
+	return db_wrbuf_del(txn->tmptxn, key, flags);
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn) return DB_EINVAL;
@@ -585,53 +586,53 @@ DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 }
 
 DB_FN size_t db__cursor_size(DB_txn *const txn) {
-	return sizeof(struct DB_cursor);
+	LDB_txn ldbtxn = {
+		.isa = db_base_leveldb_internal,
+	};
+	DB_wrbuf_txn wrbuftxn = {
+		.isa = db_base_wrbuf,
+		.main = (DB_txn *)&ldbtxn,
+		.temp = txn->tmptxn,
+	};
+	return sizeof(struct DB_cursor)+db_cursor_size((DB_txn *)&wrbuftxn);
 }
 DB_FN int db__cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 	if(!txn) return DB_EINVAL;
 	if(!cursor) return DB_EINVAL;
 	assert_zeroed(cursor, 1);
-	DB_cursor *t = NULL;
-	DB_cursor *m = NULL;
-	LDB_txn mtxn = {
+	LDB_txn ldbtxn = {
 		.isa = db_base_leveldb_internal,
 		.db = txn->env->db,
 		.ropts = txn->ropts,
 		.cmp = { *txn->env->cmp },
+	};
+	DB_wrbuf_txn wrbuftxn = {
+		.isa = db_base_wrbuf,
+		.main = (DB_txn *)&ldbtxn,
+		.temp = txn->tmptxn,
 	};
 	int rc = 0;
 
 	cursor->isa = db_base_leveldb;
 	cursor->txn = txn;
 
-	if(txn->tmptxn) {
-		rc = db_cursor_open(txn->tmptxn, &t);
-		if(rc < 0) goto cleanup;
-	}
-	rc = db_cursor_open((DB_txn *)&mtxn, &m);
-	if(rc < 0) goto cleanup;
-
-	rc = db_wrbuf_init(cursor->wrbuf, t, m);
+	rc = db_cursor_init((DB_txn *)&wrbuftxn, CURSOR_INNER(cursor));
 	if(rc < 0) goto cleanup;
 
 cleanup:
-	if(rc < 0) {
-		db_cursor_close(t); t = NULL;
-		db_cursor_close(m); m = NULL;
-		db_cursor_destroy(cursor);
-	}
+	if(rc < 0) db_cursor_destroy(cursor);
 	return rc;
 }
 DB_FN void db__cursor_destroy(DB_cursor *const cursor) {
 	if(!cursor) return;
-	db_wrbuf_destroy(cursor->wrbuf);
+	db_cursor_destroy(CURSOR_INNER(cursor));
 	cursor->isa = NULL;
 	cursor->txn = NULL;
 	assert_zeroed(cursor, 1);
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_clear(cursor->wrbuf);
+	return db_cursor_clear(CURSOR_INNER(cursor));
 }
 DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 	if(!cursor) return DB_EINVAL;
@@ -647,19 +648,19 @@ DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val 
 
 DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const data) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_current(cursor->wrbuf, key, data);
+	return db_cursor_current(CURSOR_INNER(cursor), key, data);
 }
 DB_FN int db__cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_seek(cursor->wrbuf, key, data, dir);
+	return db_cursor_seek(CURSOR_INNER(cursor), key, data, dir);
 }
 DB_FN int db__cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_first(cursor->wrbuf, key, data, dir);
+	return db_cursor_first(CURSOR_INNER(cursor), key, data, dir);
 }
 DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_next(cursor->wrbuf, key, data, dir);
+	return db_cursor_next(CURSOR_INNER(cursor), key, data, dir);
 }
 
 DB_FN int db__cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
@@ -674,16 +675,16 @@ DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range,
 
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_wrbuf_put(cursor->wrbuf, key, data, flags);
+	int rc = db_cursor_put(CURSOR_INNER(cursor), key, data, flags);
 	// Invalidating here is safe because a put will always end up
 	// pointing to the temp cursor.
-	ldb_cursor_storage_invalidate((LDB_cursor *)cursor->wrbuf->main);
+	ldb_cursor_storage_invalidate((LDB_cursor *)db_wrbuf_cursor_main(CURSOR_INNER(cursor)));
 	return rc;
 }
 DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_wrbuf_del(cursor->wrbuf, flags);
-	ldb_cursor_storage_invalidate((LDB_cursor *)cursor->wrbuf->main);
+	int rc = db_cursor_del(CURSOR_INNER(cursor), flags);
+	ldb_cursor_storage_invalidate((LDB_cursor *)db_wrbuf_cursor_main(CURSOR_INNER(cursor)));
 	return rc;
 }
 

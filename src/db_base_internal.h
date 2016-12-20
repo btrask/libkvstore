@@ -1,6 +1,9 @@
 // Copyright 2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
+#ifndef KVSTORE_DB_BASE_INTERNAL_H
+#define KVSTORE_DB_BASE_INTERNAL_H
+
 #include "db_base.h"
 
 #define DB_FN static
@@ -128,4 +131,6 @@ int db_helper_delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 int db_helper_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 int db_helper_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 int db_helper_cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
+
+#endif
 

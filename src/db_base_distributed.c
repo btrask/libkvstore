@@ -15,6 +15,7 @@
 #include "liblmdb/lmdb.h"
 #include "db_base_internal.h"
 #include "db_wrbuf.h"
+#include "db_prefix.h"
 #include "common.h"
 
 #define DB_PATH_MAX (1023+1)
@@ -59,8 +60,9 @@ struct DB_txn {
 struct DB_cursor {
 	DB_base const *isa;
 	DB_txn *txn;
-	DB_wrbuf wrbuf[1];
+	// Inner cursor
 };
+#define CURSOR_INNER(c) ((c)+1)
 
 static int err(int x) {
 	if(x < 0) return -errno;
@@ -68,7 +70,7 @@ static int err(int x) {
 }
 
 static int fhash(FILE *const file, unsigned char *const out) {
-	SHA256_CTX algo[1];
+/*	SHA256_CTX algo[1];
 	unsigned char buf[1024*4];
 	size_t len;
 	int rc;
@@ -84,7 +86,7 @@ static int fhash(FILE *const file, unsigned char *const out) {
 		}
 	}
 	rc = SHA256_Final(out, algo);
-	assert(rc >= 0);
+	assert(rc >= 0);*/
 	return 0;
 }
 
@@ -548,7 +550,7 @@ DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const fla
 			goto cleanup;
 		}
 	}
-	rc = db_wrbuf_del_direct(txn->temp, key, flags);
+	rc = db_wrbuf_del(txn->temp, key, flags);
 	if(rc < 0) goto cleanup;
 	if(txn->data) {
 		txn->length = ftell(txn->data);
@@ -581,44 +583,52 @@ DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 }
 
 DB_FN size_t db__cursor_size(DB_txn *const txn) {
-	return sizeof(struct DB_cursor);
+	DB_prefix_txn pfxtxn = {
+		.isa = db_base_prefix,
+		.txn = txn->main,
+	};
+	DB_wrbuf_txn wrbuftxn = {
+		.isa = db_base_wrbuf,
+		.main = (DB_txn *)&pfxtxn,
+		.temp = txn->temp,
+	};
+	return sizeof(struct DB_cursor)+db_cursor_size((DB_txn *)&wrbuftxn);
 }
 DB_FN int db__cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 	if(!txn) return DB_EINVAL;
 	if(!cursor) return DB_EINVAL;
 	assert_zeroed(cursor, 1);
-	DB_cursor *t = NULL;
-	DB_cursor *m = NULL;
+	unsigned char buf[1] = { PFX_MAIN };
+	DB_prefix_txn pfxtxn = {
+		.isa = db_base_prefix,
+		.pfx = {{ sizeof(buf), buf }},
+		.txn = txn->main,
+	};
+	DB_wrbuf_txn wrbuftxn = {
+		.isa = db_base_wrbuf,
+		.main = (DB_txn *)&pfxtxn,
+		.temp = txn->temp,
+	};
 	int rc = 0;
 	cursor->isa = db_base_distributed;
 	cursor->txn = txn;
 
-	if(txn->temp) {
-		rc = db_cursor_open(txn->temp, &t);
-		if(rc < 0) goto cleanup;
-	}
-	rc = db_cursor_open(txn->main, &m);
-	if(rc < 0) goto cleanup;
-	rc = db_wrbuf_init(cursor->wrbuf, t, m);
+	rc = db_cursor_init((DB_txn *)&wrbuftxn, CURSOR_INNER(cursor));
 	if(rc < 0) goto cleanup;
 cleanup:
-	if(rc < 0) {
-		db_cursor_close(t); t = NULL;
-		db_cursor_close(m); m = NULL;
-		db_cursor_destroy(cursor);
-	}
+	if(rc < 0) db_cursor_destroy(cursor);
 	return rc;
 }
 DB_FN void db__cursor_destroy(DB_cursor *const cursor) {
 	if(!cursor) return;
-	db_wrbuf_destroy(cursor->wrbuf);
+	db_cursor_destroy(CURSOR_INNER(cursor));
 	cursor->isa = NULL;
 	cursor->txn = NULL;
 	assert_zeroed(cursor, 1);
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_clear(cursor->wrbuf);
+	return db_cursor_clear(CURSOR_INNER(cursor));
 }
 DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 	if(!cursor) return DB_EINVAL;
@@ -628,24 +638,24 @@ DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
 }
 DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val const *const b) {
 	assert(cursor);
-	return db_cursor_cmp(cursor->wrbuf->main, a, b);
+	return db_cursor_cmp(CURSOR_INNER(cursor), a, b);
 }
 
 DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const data) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_current(cursor->wrbuf, key, data);
+	return db_cursor_current(CURSOR_INNER(cursor), key, data);
 }
 DB_FN int db__cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_seek(cursor->wrbuf, key, data, dir);
+	return db_cursor_seek(CURSOR_INNER(cursor), key, data, dir);
 }
 DB_FN int db__cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_first(cursor->wrbuf, key, data, dir);
+	return db_cursor_first(CURSOR_INNER(cursor), key, data, dir);
 }
 DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_next(cursor->wrbuf, key, data, dir);
+	return db_cursor_next(CURSOR_INNER(cursor), key, data, dir);
 }
 
 DB_FN int db__cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir) {
@@ -660,11 +670,11 @@ DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range,
 
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_put(cursor->wrbuf, key, data, flags); // TODO
+	return db_cursor_put(CURSOR_INNER(cursor), key, data, flags); // TODO
 }
 DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	return db_wrbuf_del(cursor->wrbuf, flags); // TODO
+	return db_cursor_del(CURSOR_INNER(cursor), flags); // TODO
 }
 
 DB_BASE_V0(distributed)
