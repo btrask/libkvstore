@@ -51,7 +51,7 @@ int db_env_create_base(char const *const basename, DB_env **const out) {
 	return db_env_create_custom(db_base_find(basename), out);
 }
 int db_env_init_custom(DB_base const *const base, DB_env *const env) {
-	if(!base) return DB_EINVAL;
+	if(!base || !base->env_init) return DB_EINVAL;
 	int rc = base->env_init(env);
 	if(rc < 0) return rc;
 	assert(env->isa);
