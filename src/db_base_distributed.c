@@ -9,6 +9,9 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#include <openssl/sha.h>
+
 #include "liblmdb/lmdb.h"
 #include "db_base_internal.h"
 #include "db_wrbuf.h"
@@ -16,69 +19,21 @@
 
 #define DB_PATH_MAX (1023+1)
 
-static int err(int x) {
-	if(x < 0) return -errno;
-	return x;
-}
+#define KEY_MAX 510
+#define VAL_MAX (1024*1024*1)
+#define CMD_MAX (1024*1024*1)
 
-int db_distributed_apply(DB_env *const dist, FILE *const data) {
-	DB_env *env = NULL;
-	DB_txn *txn = NULL;
-	unsigned char *keybuf = NULL;
-	unsigned char *valbuf = NULL;
-	int rc = db_env_get_config(dist, DB_CFG_INNERDB, &env);
-	if(rc < 0) goto cleanup;
-	rc = db_txn_begin(env, NULL, DB_RDWR, &txn);
-	if(rc < 0) goto cleanup;
-	for(;;) {
-		char type = 0;
-		unsigned long long keylen = 0, vallen = 0;
-		// TODO: Obviously this parsing isn't very robust.
-		fscanf(data, "\n%c:", &type);
-		if('P' == type || 'D' == type || '!' == type) {
-			fscanf(data, "%llu;", &keylen);
-			if('P' == type) {
-				fscanf(data, "%llu;", &vallen);
-			}
-		}
+#define DB_VAL_STORAGE(val, len) \
+	unsigned char __buf_##val[(len)]; \
+	*(val) = (DB_val){ 0, __buf_##val };
 
-		keybuf = malloc(keylen+1); // TODO: Validate lengths somehow? < SIZE_MAX?
-		valbuf = malloc(vallen+1);
-		if(!keybuf || !valbuf) rc = DB_ENOMEM;
-		if(rc < 0) goto cleanup;
-		rc = err(fread(keybuf, 1, keylen, data));
-		if(rc >= 0 && rc < keylen) rc = DB_EIO;
-		if(rc < 0) goto cleanup;
-		rc = err(fread(valbuf, 1, vallen, data));
-		if(rc >= 0 && rc < vallen) rc = DB_EIO;
-		if(rc < 0) goto cleanup;
-
-		DB_val key = { keylen, keybuf };
-		DB_val val = { vallen, valbuf };
-		switch(type) {
-		case 'P': rc = db_put(txn, &key, &val, 0); break;
-		case 'D': rc = db_del(txn, &key, 0); break;
-		case '!': rc = db_cmd(txn, keybuf, keylen); break;
-		case '.': rc = db_txn_commit(txn); txn = NULL; goto cleanup;
-		default: rc = DB_CORRUPTED; goto cleanup;
-		}
-		free(keybuf); keybuf = NULL;
-		free(valbuf); valbuf = NULL;
-		if(rc < 0) goto cleanup;
-	}
-cleanup:
-	db_txn_abort(txn); txn = NULL;
-	env = NULL;
-	free(keybuf); keybuf = NULL;
-	free(valbuf); valbuf = NULL;
-	return rc;
-}
-static int default_commit(void *ctx, DB_txn *const temp, FILE *const data) {
-	DB_env *dist = NULL;
-	int rc = db_txn_env(temp, &dist);
-	if(rc < 0) return rc;
-	return db_distributed_apply(dist, data);
-}
+enum {
+	PFX_META = 0x00,
+	PFX_MAIN = 0x01,
+};
+enum {
+	META_TXNHASH = 0x00,
+};
 
 struct DB_env {
 	DB_base const *isa;
@@ -97,8 +52,8 @@ struct DB_txn {
 	DB_txn *child;
 	DB_txn *main;
 	DB_txn *temp;
-	FILE *serial;
-	off_t length;
+	FILE *data;
+	long length;
 	DB_cursor *cursor;
 };
 struct DB_cursor {
@@ -106,6 +61,160 @@ struct DB_cursor {
 	DB_txn *txn;
 	DB_wrbuf wrbuf[1];
 };
+
+static int err(int x) {
+	if(x < 0) return -errno;
+	return x;
+}
+
+static int fhash(FILE *const file, unsigned char *const out) {
+	SHA256_CTX algo[1];
+	unsigned char buf[1024*4];
+	size_t len;
+	int rc;
+	rc = SHA256_Init(algo);
+	assert(rc >= 0);
+	for(;;) {
+		len = fread(buf, 1, sizeof(buf), file);
+		rc = SHA256_Update(algo, buf, len);
+		assert(rc >= 0);
+		if(len < sizeof(buf)) {
+			if(feof(file)) break;
+			return -1;
+		}
+	}
+	rc = SHA256_Final(out, algo);
+	assert(rc >= 0);
+	return 0;
+}
+
+DB_FN int db__apply(DB_env *const env, FILE *const data, unsigned char const *const hash) {
+	if(!env) return DB_EINVAL;
+	if(!data) return DB_EINVAL;
+	if(!hash) return DB_EINVAL;
+
+	DB_txn *txn = NULL;
+	DB_val key[1], val[1];
+	unsigned char digest[SHA256_DIGEST_LENGTH];
+	unsigned char *keybuf = NULL;
+	unsigned char *valbuf = NULL;
+	size_t len;
+	int rc = 0;
+
+	rc = fhash(data, digest);
+	if(rc < 0) {
+		rc = DB_EIO;
+		goto cleanup;
+	}
+	rc = memcmp(hash, digest, sizeof(digest));
+	if(0 != rc) {
+		rc = DB_CORRUPTED;
+		goto cleanup;
+	}
+	rc = err(fseek(data, 0, SEEK_SET));
+	if(rc < 0) goto cleanup;
+
+	rc = db_txn_begin(env->main, NULL, DB_RDWR, &txn);
+	if(rc < 0) goto cleanup;
+
+	unsigned hashlen = 0;
+	fscanf(data, "X:%u;", &hashlen);
+	if(sizeof(digest) != hashlen) rc = DB_CORRUPTED;
+	if(rc < 0) goto cleanup;
+
+	len = fread(digest, 1, sizeof(digest), data);
+	if(len < sizeof(digest)) rc = DB_EIO;
+	if(rc < 0) goto cleanup;
+
+	unsigned char meta[2] = { PFX_META, META_TXNHASH };
+	*key = (DB_val){ sizeof(meta), meta };
+	*val = (DB_val){ 0, NULL };
+	rc = db_get(txn, key, val);
+	if(DB_NOTFOUND == rc) rc = 0;
+	if(rc < 0) goto cleanup;
+	if(sizeof(digest) != val->size) {
+		rc = DB_CORRUPTED;
+		goto cleanup;
+	}
+	rc = memcmp(val->data, digest, sizeof(digest));
+	if(0 != rc) {
+		rc = DB_CORRUPTED;
+		goto cleanup;
+	}
+
+	*val = (DB_val){ sizeof(digest), (void *)hash };
+	rc = db_put(txn, key, val, 0);
+	if(rc < 0) goto cleanup;
+
+	for(;;) {
+		char type = 0;
+		unsigned long long keylen = 0, vallen = 0;
+		fscanf(data, "\n%c:", &type);
+		if(0 == type) {
+			break;
+		} else if('P' == type) {
+			fscanf(data, "%llu;", &keylen);
+			fscanf(data, "%llu;", &vallen);
+			if(0 == keylen) rc = DB_BAD_VALSIZE;
+			if(keylen > KEY_MAX) rc = DB_BAD_VALSIZE;
+			if(vallen > VAL_MAX) rc = DB_BAD_VALSIZE;
+		} else if('D' == type) {
+			fscanf(data, "%llu;", &keylen);
+			if(0 == keylen) rc = DB_BAD_VALSIZE;
+			if(keylen > KEY_MAX) rc = DB_BAD_VALSIZE;
+		} else if('!' == type) {
+			fscanf(data, "%llu;", &keylen);
+			if(keylen > CMD_MAX) rc = DB_BAD_VALSIZE;
+		} else {
+			rc = DB_CORRUPTED;
+		}
+		if(rc < 0) goto cleanup;
+
+		// 1. Allocations must be non-zero (undefined behavior).
+		// 2. Keys for put or del will be prefixed with PFX_MAIN.
+		// 3. Commands are stored in keybuf but not prefixed.
+		keybuf = malloc(1+keylen);
+		valbuf = malloc(1+vallen);
+		if(!keybuf || !valbuf) {
+			rc = DB_ENOMEM;
+			goto cleanup;
+		}
+		keybuf[0] = PFX_MAIN;
+		len = fread(1+keybuf, 1, keylen, data);
+		if(len < keylen) {
+			rc = DB_EIO;
+			goto cleanup;
+		}
+		len = fread(0+valbuf, 1, vallen, data);
+		if(len < vallen) {
+			rc = DB_EIO;
+			goto cleanup;
+		}
+
+		*key = (DB_val){ 1+keylen, 0+keybuf };
+		*val = (DB_val){ 0+vallen, 0+valbuf };
+		if('P' == type) rc = db_put(txn, key, val, 0);
+		if('D' == type) rc = db_del(txn, key, 0);
+		if('!' == type) rc = db_cmd(txn, 1+keybuf, 0+keylen);
+		free(keybuf); keybuf = NULL;
+		free(valbuf); valbuf = NULL;
+		if(rc < 0) goto cleanup;
+	}
+
+	// TODO: Write new hash
+
+	rc = db_txn_commit(txn); txn = NULL;
+	if(rc < 0) goto cleanup;
+cleanup:
+	free(keybuf); keybuf = NULL;
+	free(valbuf); valbuf = NULL;
+	return rc;
+}
+#define db_apply db__apply // TODO
+static int default_commit(void *ctx, DB_env *const env, FILE *const data, unsigned char const *const hash) {
+	return db_apply(env, data, hash);
+}
+
 
 DB_FN size_t db__env_size(void) {
 	return sizeof(struct DB_env);
@@ -237,20 +346,36 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 		if(rc < 0) goto cleanup;
 
 		if(parent) {
-			txn->serial = parent->serial;
+			txn->data = parent->data;
 			txn->length = parent->length;
 		} else {
 			// TODO: We're keeping these purely for debugging.
 			static int x = 0;
 			char path[DB_PATH_MAX];
-			rc = err(snprintf(path, sizeof(path), "%s/serial-%d", env->path, x++));
+			rc = err(snprintf(path, sizeof(path), "%s/data-%d", env->path, x++));
 			if(rc >= sizeof(path)) rc = DB_ENAMETOOLONG;
 			if(rc < 0) goto cleanup;
-			txn->serial = fopen(path, "w+b");
-			if(!txn->serial) rc = -errno;
+			txn->data = fopen(path, "w+b");
+			if(!txn->data) rc = -errno;
 			if(rc < 0) goto cleanup;
-			//unlink(path);
-			txn->length = 0;
+			//remove(path);
+
+			unsigned char buf[2] = { PFX_META, META_TXNHASH };
+			DB_val key = { sizeof(buf), buf };
+			DB_val val = { 0, NULL };
+			rc = db_get(txn->main, &key, &val);
+			if(DB_NOTFOUND == rc) rc = 0;
+			if(rc < 0) goto cleanup;
+			rc = fprintf(txn->data, "X:%u;", (unsigned)val.size);
+			if(rc < 0) {
+				rc = DB_EIO;
+				goto cleanup;
+			}
+			size_t len = fwrite(val.data, 1, val.size, txn->data);
+			if(len < val.size) rc = DB_EIO;
+			if(rc < 0) goto cleanup;
+			txn->length = ftell(txn->data);
+			assert(txn->length >= 0);
 		}
 	}
 
@@ -261,6 +386,10 @@ cleanup:
 }
 DB_FN int db__txn_commit_destroy(DB_txn *const txn) {
 	if(!txn) return DB_EINVAL;
+	DB_env *const env = txn->env;
+	FILE *data = NULL;
+	size_t length = 0;
+	unsigned char digest[SHA256_DIGEST_LENGTH];
 	int rc = 0;
 	if(!txn->temp) goto cleanup; // DB_RDONLY
 	if(txn->child) {
@@ -272,25 +401,39 @@ DB_FN int db__txn_commit_destroy(DB_txn *const txn) {
 		db_cursor_close(txn->cursor); txn->cursor = NULL;
 		rc = db_txn_commit(txn->temp); txn->temp = NULL;
 		if(rc < 0) goto cleanup;
-		txn->serial = NULL;
+		txn->data = NULL;
 		txn->parent->length = txn->length;
 		goto cleanup;
 	}
 
-	if(!txn->env->commit->fn) rc = DB_PANIC;
+	data = txn->data; txn->data = NULL;
+	length = txn->length; txn->length = 0;
+	db_txn_abort_destroy(txn);
+
+	rc = err(fflush(data));
+	if(rc < 0) goto cleanup;
+	rc = err(ftruncate(fileno(data), length));
 	if(rc < 0) goto cleanup;
 
-	// TODO: We're currently using a '.' to indicate the end
-	// of transaction data instead of truncating.
-	int x = 0;
-	x = err(fprintf(txn->serial, "\n."));
-	assert(x >= 0);
-	x = err(fseek(txn->serial, 0, SEEK_SET));
-	assert(x >= 0);
-	rc = txn->env->commit->fn(txn->env->commit->ctx, txn, txn->serial);
+	rc = err(fseek(data, 0, SEEK_SET));
+	if(rc < 0) goto cleanup;
+	rc = fhash(data, digest);
+	if(rc < 0) {
+		rc = DB_EIO;
+		goto cleanup;
+	}
+
+	rc = err(fseek(data, 0, SEEK_SET));
+	if(rc < 0) goto cleanup;
+	if(!env->commit->fn) {
+		rc = DB_PANIC;
+		goto cleanup;
+	}
+	rc = env->commit->fn(env->commit->ctx, env, data, digest);
 	if(rc < 0) goto cleanup;
 
 cleanup:
+	fclose(data); data = NULL;
 	db_txn_abort_destroy(txn);
 	return rc;
 }
@@ -299,14 +442,14 @@ DB_FN void db__txn_abort_destroy(DB_txn *const txn) {
 	if(txn->child) {
 		db_txn_abort(txn->child); txn->child = NULL;
 	}
-	if(!txn->serial) {
+	if(!txn->data) {
 		// Do nothing
 	} else if(txn->parent) {
-		int rc = err(fseek(txn->serial, txn->parent->length, SEEK_SET));
+		int rc = err(fseek(txn->data, txn->parent->length, SEEK_SET));
 		assert(rc >= 0);
-		txn->serial = NULL;
+		txn->data = NULL;
 	} else {
-		fclose(txn->serial); txn->serial = NULL;
+		fclose(txn->data); txn->data = NULL;
 	}
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
 	db_txn_abort(txn->main); txn->main = NULL;
@@ -359,28 +502,29 @@ DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const val, unsig
 	if(!txn) return DB_EINVAL;
 	if(flags & ~DB_NOOVERWRITE) return DB_ENOTSUP; // TODO
 	if(!txn->temp) return DB_EACCES;
+	size_t len;
 	int rc = 0;
-	if(txn->serial) {
-		rc = err(fprintf(txn->serial, "\nP:%llu;%llu;",
+	if(txn->data) {
+		rc = fprintf(txn->data, "\nP:%llu;%llu;",
 			(unsigned long long)key->size,
-			(unsigned long long)val->size));
+			(unsigned long long)val->size);
 		if(rc < 0) goto cleanup;
-		rc = err(fwrite(key->data, 1, key->size, txn->serial));
-		if(rc >= 0 && rc < key->size) rc = DB_EIO;
+		len = fwrite(key->data, 1, key->size, txn->data);
+		if(len < key->size) rc = DB_EIO;
 		if(rc < 0) goto cleanup;
-		rc = err(fwrite(val->data, 1, val->size, txn->serial));
-		if(rc >= 0 && rc < val->size) rc = DB_EIO;
+		len = fwrite(val->data, 1, val->size, txn->data);
+		if(len < val->size) rc = DB_EIO;
 		if(rc < 0) goto cleanup;
 	}
 	rc = db_helper_put(txn, key, val, flags);
 	if(rc < 0) goto cleanup;
-	if(txn->serial) {
-		txn->length = ftell(txn->serial);
+	if(txn->data) {
+		txn->length = ftell(txn->data);
 		assert(txn->length >= 0);
 	}
 cleanup:
-	if(txn->serial && rc < 0) {
-		int x = err(fseek(txn->serial, txn->length, SEEK_SET));
+	if(txn->data && rc < 0) {
+		int x = err(fseek(txn->data, txn->length, SEEK_SET));
 		assert(x >= 0);
 	}
 	return rc;
@@ -389,24 +533,30 @@ DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	if(flags) return DB_ENOTSUP; // TODO
 	if(!txn->temp) return DB_EACCES;
+	size_t len;
 	int rc = 0;
-	if(txn->serial) {
-		rc = err(fprintf(txn->serial, "\nD:%llu;",
-			(unsigned long long)key->size));
-		if(rc < 0) goto cleanup;
-		rc = err(fwrite(key->data, 1, key->size, txn->serial));
-		if(rc >= 0 && rc < key->size) rc = DB_EIO;
-		if(rc < 0) goto cleanup;
+	if(txn->data) {
+		rc = fprintf(txn->data, "\nD:%llu;",
+			(unsigned long long)key->size);
+		if(rc < 0) {
+			rc = DB_EIO;
+			goto cleanup;
+		}
+		len = fwrite(key->data, 1, key->size, txn->data);
+		if(len < key->size) {
+			rc = DB_EIO;
+			goto cleanup;
+		}
 	}
 	rc = db_wrbuf_del_direct(txn->temp, key, flags);
 	if(rc < 0) goto cleanup;
-	if(txn->serial) {
-		txn->length = ftell(txn->serial);
+	if(txn->data) {
+		txn->length = ftell(txn->data);
 		assert(txn->length >= 0);
 	}
 cleanup:
-	if(txn->serial && rc < 0) {
-		int x = err(fseek(txn->serial, txn->length, SEEK_SET));
+	if(txn->data && rc < 0) {
+		int x = err(fseek(txn->data, txn->length, SEEK_SET));
 		assert(x >= 0);
 	}
 	return rc;
@@ -415,10 +565,10 @@ DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t cons
 	if(!txn) return DB_EINVAL;
 	if(!txn->env->cmd->fn) return DB_EINVAL;
 
-	FILE *serial = txn->serial; txn->serial = NULL;
+	FILE *data = txn->data; txn->data = NULL;
 	int rc = txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len); // TODO
 	assert(txn->isa); // Simple check that we weren't committed/aborted.
-	txn->serial = serial;
+	txn->data = data;
 //cleanup:
 	return rc;
 }
@@ -510,13 +660,11 @@ DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range,
 
 DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_wrbuf_put(cursor->wrbuf, key, data, flags); // TODO
-	return rc;
+	return db_wrbuf_put(cursor->wrbuf, key, data, flags); // TODO
 }
 DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_wrbuf_del(cursor->wrbuf, flags); // TODO
-	return rc;
+	return db_wrbuf_del(cursor->wrbuf, flags); // TODO
 }
 
 DB_BASE_V0(distributed)

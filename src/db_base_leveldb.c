@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h> // For unlink(2)
 #include <sys/resource.h>
 
 #ifdef LEVELDB_AS_ROCKSDB
@@ -382,7 +381,7 @@ DB_FN int db__env_open0(DB_env *const env) {
 	// MDB_WRITEMAP unfortunately doesn't work with nested txns.
 	rc = db_env_open(env->tmpenv, tmppath, 0, 0600);
 	if(rc < 0) return rc;
-	(void)unlink(tmppath);
+	(void) remove(tmppath);
 
 	return 0;
 }
