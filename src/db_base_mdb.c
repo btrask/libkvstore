@@ -225,13 +225,13 @@ DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 // Use our own cursor for these rather than mdb_get/put
 // because otherwise MDB has to construct its own temporary cursor
 // on the stack, which is just wasteful if we might need it again.
-DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
+DB_FN int db__get(DB_txn *const txn, DB_val const *const key, DB_val *const data) {
 	return db_helper_get(txn, key, data);
 }
-DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
+DB_FN int db__put(DB_txn *const txn, DB_val const *const key, DB_val *const data, unsigned const flags) {
 	return db_helper_put(txn, key, data, flags);
 }
-DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
+DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 	return db_helper_del(txn, key, flags);
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {

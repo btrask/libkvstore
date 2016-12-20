@@ -188,15 +188,15 @@ int db_txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	return txn->isa->txn_cursor(txn, out);
 }
 
-int db_get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
+int db_get(DB_txn *const txn, DB_val const *const key, DB_val *const data) {
 	if(!txn || !txn->isa) return DB_EINVAL;
 	return txn->isa->get(txn, key, data);
 }
-int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
+int db_put(DB_txn *const txn, DB_val const *const key, DB_val *const data, unsigned const flags) {
 	if(!txn || !txn->isa) return DB_EINVAL;
 	return txn->isa->put(txn, key, data, flags);
 }
-int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
+int db_del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 	if(!txn || !txn->isa) return DB_EINVAL;
 	return txn->isa->del(txn, key, flags);
 }

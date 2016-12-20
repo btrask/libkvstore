@@ -5,23 +5,23 @@
 #include <stdio.h>
 #include "db_base_internal.h"
 
-int db_helper_get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
+int db_helper_get(DB_txn *const txn, DB_val const *const key, DB_val *const data) {
 	DB_cursor *cursor;
 	int rc = db_txn_cursor(txn, &cursor);
 	if(rc < 0) return rc;
-	return db_cursor_seek(cursor, key, data, 0);
+	return db_cursor_seek(cursor, (DB_val *)key, data, 0);
 }
-int db_helper_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
+int db_helper_put(DB_txn *const txn, DB_val const *const key, DB_val *const data, unsigned const flags) {
 	DB_cursor *cursor;
 	int rc = db_txn_cursor(txn, &cursor);
 	if(rc < 0) return rc;
-	return db_cursor_put(cursor, key, data, flags);
+	return db_cursor_put(cursor, (DB_val *)key, data, flags);
 }
-int db_helper_del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
+int db_helper_del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 	DB_cursor *cursor;
 	int rc = db_txn_cursor(txn, &cursor);
 	if(rc < 0) return rc;
-	rc = db_cursor_seek(cursor, key, NULL, 0);
+	rc = db_cursor_seek(cursor, (DB_val *)key, NULL, 0);
 	if(DB_NOTFOUND == rc) return 0; // Unless flags & DB_NOOVERWRITE?
 	if(rc < 0) return rc;
 	return db_cursor_del(cursor, flags);

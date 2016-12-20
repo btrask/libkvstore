@@ -148,9 +148,9 @@ int db_txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *const b);
 // you're done.
 int db_txn_cursor(DB_txn *const txn, DB_cursor **const out);
 
-int db_get(DB_txn *const txn, DB_val *const key, DB_val *const data);
-int db_put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags);
-int db_del(DB_txn *const txn, DB_val *const key, unsigned const flags); // Doesn't return DB_NOTFOUND if key doesn't exist (a flag may be added in the future).
+int db_get(DB_txn *const txn, DB_val const *const key, DB_val *const data);
+int db_put(DB_txn *const txn, DB_val const *const key, DB_val *const data, unsigned const flags);
+int db_del(DB_txn *const txn, DB_val const *const key, unsigned const flags); // Doesn't return DB_NOTFOUND if key doesn't exist (a flag may be added in the future).
 int db_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len); // For efficient logical replication. Must call set_cmdfn to implement.
 
 int db_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out);

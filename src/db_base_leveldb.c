@@ -559,13 +559,13 @@ DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	return 0;
 }
 
-DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
+DB_FN int db__get(DB_txn *const txn, DB_val const *const key, DB_val *const data) {
 	return db_helper_get(txn, key, data);
 }
-DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
+DB_FN int db__put(DB_txn *const txn, DB_val const *const key, DB_val *const data, unsigned const flags) {
 	return db_helper_put(txn, key, data, flags);
 }
-DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
+DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	return db_wrbuf_del_direct(txn->tmptxn, key, flags);
 }

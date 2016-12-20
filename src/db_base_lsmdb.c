@@ -180,18 +180,18 @@ DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
 	return 0;
 }
 
-DB_FN int db__get(DB_txn *const txn, DB_val *const key, DB_val *const data) {
+DB_FN int db__get(DB_txn *const txn, DB_val const *const key, DB_val *const data) {
 	if(!txn) return DB_EINVAL;
 	return mdberr(lsmdb_get(txn->txn, (MDB_val *)key, (MDB_val *)data));
 }
-DB_FN int db__put(DB_txn *const txn, DB_val *const key, DB_val *const data, unsigned const flags) {
+DB_FN int db__put(DB_txn *const txn, DB_val const *const key, DB_val *const data, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	MDB_val null = { 0, NULL };
 	MDB_val *const k = (MDB_val *)key;
 	MDB_val *const d = data ? (MDB_val *)data : &null;
 	return mdberr(lsmdb_put(txn->txn, k, d, flags));
 }
-DB_FN int db__del(DB_txn *const txn, DB_val *const key, unsigned const flags) {
+DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	return mdberr(lsmdb_del(txn->txn, (MDB_val *)key, flags));
 }

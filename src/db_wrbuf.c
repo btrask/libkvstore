@@ -183,7 +183,7 @@ int db_wrbuf_del(DB_wrbuf *const buf, unsigned const flags) {
 	return 0;
 }
 
-int db_wrbuf_del_direct(DB_txn *const temp, DB_val *const key, unsigned const flags) {
+int db_wrbuf_del_direct(DB_txn *const temp, DB_val const *const key, unsigned const flags) {
 	if(!temp) return DB_EACCES;
 	if(flags) return DB_EINVAL;
 	char tombstone = DB_WRBUF_DEL;
