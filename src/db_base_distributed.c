@@ -141,35 +141,37 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 		unsigned txnidlen = 0;
 		fscanf(log, "%c:%u;", &type, &txnidlen);
 		if('O' != type) {
-			rc = DB_BAD_TXN;
+			rc = DB_INCOMPATIBLE;
 			goto cleanup;
 		}
 		if(txnidlen > TXNID_MAX) {
-			rc = DB_CORRUPTED;
+			rc = DB_INCOMPATIBLE;
 			goto cleanup;
 		}
 		len = fread(txnid, 1, txnidlen, log);
-		if(len < txnidlen) rc = DB_EIO;
-		if(rc < 0) goto cleanup;
+		if(len < txnidlen) {
+			rc = DB_EIO;
+			goto cleanup;
+		}
 
 		*val = (DB_val){ 0, NULL };
 		rc = db_get(txn, key, val);
 		if(DB_NOTFOUND == rc) rc = 0;
 		if(rc < 0) goto cleanup;
 		if(txnidlen != val->size) {
-			rc = DB_CORRUPTED;
+			rc = DB_BAD_TXN;
 			goto cleanup;
 		}
 		rc = memcmp(val->data, txnid, txnidlen);
 		if(0 != rc) {
-			rc = DB_CORRUPTED;
+			rc = DB_BAD_TXN;
 			goto cleanup;
 		}
 	} else {
 		char type = 0;
 		fscanf(log, "%c:", &type);
 		if('U' != type) {
-			rc = DB_BAD_TXN;
+			rc = DB_INCOMPATIBLE;
 			goto cleanup;
 		}
 	}

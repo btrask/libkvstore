@@ -39,7 +39,7 @@
 //#define DB_CURSOR_FULL (-30787)
 //#define DB_PAGE_FULL (-30786)
 //#define DB_MAP_RESIZED (-30785)
-//#define DB_INCOMPATIBLE (-30784)
+#define DB_INCOMPATIBLE (-30784)
 //#define DB_BAD_RSLOT (-30783)
 #define DB_BAD_TXN (-30782)
 #define DB_BAD_VALSIZE (-30781)
@@ -226,6 +226,7 @@ static char const *db_strerror(int const rc) {
 	case DB_MAP_FULL: return "Database map full";
 	case DB_READERS_FULL: return "Too many database readers";
 	case DB_TXN_FULL: return "Database transaction full";
+	case DB_INCOMPATIBLE: return "Database incompatible";
 	case DB_BAD_TXN: return "Invalid database transaction";
 	case DB_BAD_VALSIZE: return "Database bad value size";
 
