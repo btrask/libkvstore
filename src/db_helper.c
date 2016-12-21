@@ -110,3 +110,18 @@ int db_helper_cursor_nextr(DB_cursor *const cursor, DB_range const *const range,
 	return DB_NOTFOUND;
 }
 
+int db_helper_cursor_del(DB_cursor *const cursor, unsigned const flags) {
+	if(!cursor) return DB_EINVAL;
+	if(flags) return DB_ENOTSUP;
+	DB_txn *txn = NULL;
+	DB_val key[1];
+	int rc = db_cursor_txn(cursor, &txn);
+	if(rc < 0) return rc;
+	rc = db_cursor_current(cursor, key, NULL);
+	if(rc < 0) return rc;
+	rc = db_del(txn, key, flags);
+	if(rc < 0) return rc;
+	db_cursor_clear(cursor);
+	return rc;
+}
+

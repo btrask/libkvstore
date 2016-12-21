@@ -92,7 +92,7 @@ typedef struct {
 	void *ctx;
 } DB_print_data;
 
-typedef int (*DB_commit_func)(void *ctx, DB_env *const env, FILE *const data, unsigned char const *const hash);
+typedef int (*DB_commit_func)(void *ctx, DB_env *const env, FILE *const log, unsigned char const *const hash);
 typedef struct {
 	DB_commit_func fn;
 	void *ctx;

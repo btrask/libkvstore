@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,16 +54,48 @@ struct DB_txn {
 	DB_txn *child;
 	DB_txn *main;
 	DB_txn *temp;
-	FILE *data;
+	FILE *log;
 	long length;
 	DB_cursor *cursor;
 };
 struct DB_cursor {
 	DB_base const *isa;
 	DB_txn *txn;
+	bool has_reserve;
 	// Inner cursor
 };
 #define CURSOR_INNER(c) ((c)+1)
+
+static void reserve_finish(DB_cursor *const cursor) {
+	if(!cursor) return;
+	if(!cursor->txn->temp) return;
+	if(!cursor->has_reserve) return;
+	DB_val key[1], val[1];
+	size_t len;
+	int rc = db_cursor_current(CURSOR_INNER(cursor), key, val);
+	assert(rc >= 0);
+	DB_txn *const txn = cursor->txn;
+	if(!txn->log) return;
+
+	rc = fprintf(txn->log, "\nP:%llu;%llu;",
+		(unsigned long long)key->size,
+		(unsigned long long)val->size);
+	if(rc < 0) goto cleanup;
+	len = fwrite(key->data, 1, key->size, txn->log);
+	if(len < key->size) rc = DB_EIO;
+	if(rc < 0) goto cleanup;
+	len = fwrite(val->data, 1, val->size, txn->log);
+	if(len < val->size) rc = DB_EIO;
+	if(rc < 0) goto cleanup;
+	txn->length = ftell(txn->log);
+	assert(txn->length >= 0);
+cleanup:
+	assert(rc >= 0);
+	// Note: Errors are hard to deal with correctly in this case.
+	// We could try "reserving" space in the log, and then going
+	// back and overwriting it, but that wouldn't necessarily be
+	// any less error-prone.
+}
 
 static int err(int x) {
 	if(x < 0) return -errno;
@@ -90,9 +123,9 @@ static int fhash(FILE *const file, unsigned char *const out) {
 	return 0;
 }
 
-DB_FN int db__apply(DB_env *const env, FILE *const data, unsigned char const *const hash) {
+DB_FN int db__apply(DB_env *const env, FILE *const log, unsigned char const *const hash) {
 	if(!env) return DB_EINVAL;
-	if(!data) return DB_EINVAL;
+	if(!log) return DB_EINVAL;
 	if(!hash) return DB_EINVAL;
 
 	DB_txn *txn = NULL;
@@ -103,7 +136,7 @@ DB_FN int db__apply(DB_env *const env, FILE *const data, unsigned char const *co
 	size_t len;
 	int rc = 0;
 
-	rc = fhash(data, digest);
+	rc = fhash(log, digest);
 	if(rc < 0) {
 		rc = DB_EIO;
 		goto cleanup;
@@ -113,18 +146,18 @@ DB_FN int db__apply(DB_env *const env, FILE *const data, unsigned char const *co
 		rc = DB_CORRUPTED;
 		goto cleanup;
 	}
-	rc = err(fseek(data, 0, SEEK_SET));
+	rc = err(fseek(log, 0, SEEK_SET));
 	if(rc < 0) goto cleanup;
 
 	rc = db_txn_begin(env->main, NULL, DB_RDWR, &txn);
 	if(rc < 0) goto cleanup;
 
 	unsigned hashlen = 0;
-	fscanf(data, "X:%u;", &hashlen);
+	fscanf(log, "X:%u;", &hashlen);
 	if(sizeof(digest) != hashlen) rc = DB_CORRUPTED;
 	if(rc < 0) goto cleanup;
 
-	len = fread(digest, 1, sizeof(digest), data);
+	len = fread(digest, 1, sizeof(digest), log);
 	if(len < sizeof(digest)) rc = DB_EIO;
 	if(rc < 0) goto cleanup;
 
@@ -151,21 +184,21 @@ DB_FN int db__apply(DB_env *const env, FILE *const data, unsigned char const *co
 	for(;;) {
 		char type = 0;
 		unsigned long long keylen = 0, vallen = 0;
-		fscanf(data, "\n%c:", &type);
+		fscanf(log, "\n%c:", &type);
 		if(0 == type) {
 			break;
 		} else if('P' == type) {
-			fscanf(data, "%llu;", &keylen);
-			fscanf(data, "%llu;", &vallen);
+			fscanf(log, "%llu;", &keylen);
+			fscanf(log, "%llu;", &vallen);
 			if(0 == keylen) rc = DB_BAD_VALSIZE;
 			if(keylen > KEY_MAX) rc = DB_BAD_VALSIZE;
 			if(vallen > VAL_MAX) rc = DB_BAD_VALSIZE;
 		} else if('D' == type) {
-			fscanf(data, "%llu;", &keylen);
+			fscanf(log, "%llu;", &keylen);
 			if(0 == keylen) rc = DB_BAD_VALSIZE;
 			if(keylen > KEY_MAX) rc = DB_BAD_VALSIZE;
 		} else if('!' == type) {
-			fscanf(data, "%llu;", &keylen);
+			fscanf(log, "%llu;", &keylen);
 			if(keylen > CMD_MAX) rc = DB_BAD_VALSIZE;
 		} else {
 			rc = DB_CORRUPTED;
@@ -182,12 +215,12 @@ DB_FN int db__apply(DB_env *const env, FILE *const data, unsigned char const *co
 			goto cleanup;
 		}
 		keybuf[0] = PFX_MAIN;
-		len = fread(1+keybuf, 1, keylen, data);
+		len = fread(1+keybuf, 1, keylen, log);
 		if(len < keylen) {
 			rc = DB_EIO;
 			goto cleanup;
 		}
-		len = fread(0+valbuf, 1, vallen, data);
+		len = fread(0+valbuf, 1, vallen, log);
 		if(len < vallen) {
 			rc = DB_EIO;
 			goto cleanup;
@@ -213,8 +246,8 @@ cleanup:
 	return rc;
 }
 #define db_apply db__apply // TODO
-static int default_commit(void *ctx, DB_env *const env, FILE *const data, unsigned char const *const hash) {
-	return db_apply(env, data, hash);
+static int default_commit(void *ctx, DB_env *const env, FILE *const log, unsigned char const *const hash) {
+	return db_apply(env, log, hash);
 }
 
 
@@ -348,17 +381,17 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 		if(rc < 0) goto cleanup;
 
 		if(parent) {
-			txn->data = parent->data;
+			txn->log = parent->log;
 			txn->length = parent->length;
 		} else {
 			// TODO: We're keeping these purely for debugging.
 			static int x = 0;
 			char path[DB_PATH_MAX];
-			rc = err(snprintf(path, sizeof(path), "%s/data-%d", env->path, x++));
+			rc = err(snprintf(path, sizeof(path), "%s/log-%d", env->path, x++));
 			if(rc >= sizeof(path)) rc = DB_ENAMETOOLONG;
 			if(rc < 0) goto cleanup;
-			txn->data = fopen(path, "w+b");
-			if(!txn->data) rc = -errno;
+			txn->log = fopen(path, "w+b");
+			if(!txn->log) rc = -errno;
 			if(rc < 0) goto cleanup;
 			//remove(path);
 
@@ -368,15 +401,15 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 			rc = db_get(txn->main, &key, &val);
 			if(DB_NOTFOUND == rc) rc = 0;
 			if(rc < 0) goto cleanup;
-			rc = fprintf(txn->data, "X:%u;", (unsigned)val.size);
+			rc = fprintf(txn->log, "X:%u;", (unsigned)val.size);
 			if(rc < 0) {
 				rc = DB_EIO;
 				goto cleanup;
 			}
-			size_t len = fwrite(val.data, 1, val.size, txn->data);
+			size_t len = fwrite(val.data, 1, val.size, txn->log);
 			if(len < val.size) rc = DB_EIO;
 			if(rc < 0) goto cleanup;
-			txn->length = ftell(txn->data);
+			txn->length = ftell(txn->log);
 			assert(txn->length >= 0);
 		}
 	}
@@ -389,7 +422,7 @@ cleanup:
 DB_FN int db__txn_commit_destroy(DB_txn *const txn) {
 	if(!txn) return DB_EINVAL;
 	DB_env *const env = txn->env;
-	FILE *data = NULL;
+	FILE *log = NULL;
 	size_t length = 0;
 	unsigned char digest[SHA256_DIGEST_LENGTH];
 	int rc = 0;
@@ -403,39 +436,39 @@ DB_FN int db__txn_commit_destroy(DB_txn *const txn) {
 		db_cursor_close(txn->cursor); txn->cursor = NULL;
 		rc = db_txn_commit(txn->temp); txn->temp = NULL;
 		if(rc < 0) goto cleanup;
-		txn->data = NULL;
+		txn->log = NULL;
 		txn->parent->length = txn->length;
 		goto cleanup;
 	}
 
-	data = txn->data; txn->data = NULL;
+	log = txn->log; txn->log = NULL;
 	length = txn->length; txn->length = 0;
 	db_txn_abort_destroy(txn);
 
-	rc = err(fflush(data));
+	rc = err(fflush(log));
 	if(rc < 0) goto cleanup;
-	rc = err(ftruncate(fileno(data), length));
+	rc = err(ftruncate(fileno(log), length));
 	if(rc < 0) goto cleanup;
 
-	rc = err(fseek(data, 0, SEEK_SET));
+	rc = err(fseek(log, 0, SEEK_SET));
 	if(rc < 0) goto cleanup;
-	rc = fhash(data, digest);
+	rc = fhash(log, digest);
 	if(rc < 0) {
 		rc = DB_EIO;
 		goto cleanup;
 	}
 
-	rc = err(fseek(data, 0, SEEK_SET));
+	rc = err(fseek(log, 0, SEEK_SET));
 	if(rc < 0) goto cleanup;
 	if(!env->commit->fn) {
 		rc = DB_PANIC;
 		goto cleanup;
 	}
-	rc = env->commit->fn(env->commit->ctx, env, data, digest);
+	rc = env->commit->fn(env->commit->ctx, env, log, digest);
 	if(rc < 0) goto cleanup;
 
 cleanup:
-	fclose(data); data = NULL;
+	fclose(log); log = NULL;
 	db_txn_abort_destroy(txn);
 	return rc;
 }
@@ -444,14 +477,14 @@ DB_FN void db__txn_abort_destroy(DB_txn *const txn) {
 	if(txn->child) {
 		db_txn_abort(txn->child); txn->child = NULL;
 	}
-	if(!txn->data) {
+	if(!txn->log) {
 		// Do nothing
 	} else if(txn->parent) {
-		int rc = err(fseek(txn->data, txn->parent->length, SEEK_SET));
+		int rc = err(fseek(txn->log, txn->parent->length, SEEK_SET));
 		assert(rc >= 0);
-		txn->data = NULL;
+		txn->log = NULL;
 	} else {
-		fclose(txn->data); txn->data = NULL;
+		fclose(txn->log); txn->log = NULL;
 	}
 	db_cursor_close(txn->cursor); txn->cursor = NULL;
 	db_txn_abort(txn->main); txn->main = NULL;
@@ -501,50 +534,21 @@ DB_FN int db__get(DB_txn *const txn, DB_val const *const key, DB_val *const data
 	return db_helper_get(txn, key, data);
 }
 DB_FN int db__put(DB_txn *const txn, DB_val const *const key, DB_val *const val, unsigned const flags) {
-	if(!txn) return DB_EINVAL;
-	if(flags & ~DB_NOOVERWRITE) return DB_ENOTSUP; // TODO
-	if(!txn->temp) return DB_EACCES;
-	size_t len;
-	int rc = 0;
-	if(txn->data) {
-		rc = fprintf(txn->data, "\nP:%llu;%llu;",
-			(unsigned long long)key->size,
-			(unsigned long long)val->size);
-		if(rc < 0) goto cleanup;
-		len = fwrite(key->data, 1, key->size, txn->data);
-		if(len < key->size) rc = DB_EIO;
-		if(rc < 0) goto cleanup;
-		len = fwrite(val->data, 1, val->size, txn->data);
-		if(len < val->size) rc = DB_EIO;
-		if(rc < 0) goto cleanup;
-	}
-	rc = db_helper_put(txn, key, val, flags);
-	if(rc < 0) goto cleanup;
-	if(txn->data) {
-		txn->length = ftell(txn->data);
-		assert(txn->length >= 0);
-	}
-cleanup:
-	if(txn->data && rc < 0) {
-		int x = err(fseek(txn->data, txn->length, SEEK_SET));
-		assert(x >= 0);
-	}
-	return rc;
+	return db_helper_put(txn, key, val, flags);
 }
 DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
-	if(flags) return DB_ENOTSUP; // TODO
 	if(!txn->temp) return DB_EACCES;
 	size_t len;
 	int rc = 0;
-	if(txn->data) {
-		rc = fprintf(txn->data, "\nD:%llu;",
+	if(txn->log) {
+		rc = fprintf(txn->log, "\nD:%llu;",
 			(unsigned long long)key->size);
 		if(rc < 0) {
 			rc = DB_EIO;
 			goto cleanup;
 		}
-		len = fwrite(key->data, 1, key->size, txn->data);
+		len = fwrite(key->data, 1, key->size, txn->log);
 		if(len < key->size) {
 			rc = DB_EIO;
 			goto cleanup;
@@ -552,13 +556,13 @@ DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const fla
 	}
 	rc = db_wrbuf_del(txn->temp, key, flags);
 	if(rc < 0) goto cleanup;
-	if(txn->data) {
-		txn->length = ftell(txn->data);
+	if(txn->log) {
+		txn->length = ftell(txn->log);
 		assert(txn->length >= 0);
 	}
 cleanup:
-	if(txn->data && rc < 0) {
-		int x = err(fseek(txn->data, txn->length, SEEK_SET));
+	if(txn->log && rc < 0) {
+		int x = err(fseek(txn->log, txn->length, SEEK_SET));
 		assert(x >= 0);
 	}
 	return rc;
@@ -567,10 +571,10 @@ DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t cons
 	if(!txn) return DB_EINVAL;
 	if(!txn->env->cmd->fn) return DB_EINVAL;
 
-	FILE *data = txn->data; txn->data = NULL;
+	FILE *log = txn->log; txn->log = NULL;
 	int rc = txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len); // TODO
 	assert(txn->isa); // Simple check that we weren't committed/aborted.
-	txn->data = data;
+	txn->log = log;
 //cleanup:
 	return rc;
 }
@@ -579,7 +583,7 @@ DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *c
 	return db_helper_countr(txn, range, out);
 }
 DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
-	return db_helper_delr(txn, range, out); // TODO
+	return db_helper_delr(txn, range, out);
 }
 
 DB_FN size_t db__cursor_size(DB_txn *const txn) {
@@ -628,6 +632,7 @@ DB_FN void db__cursor_destroy(DB_cursor *const cursor) {
 }
 DB_FN int db__cursor_clear(DB_cursor *const cursor) {
 	if(!cursor) return DB_EINVAL;
+	reserve_finish(cursor);
 	return db_cursor_clear(CURSOR_INNER(cursor));
 }
 DB_FN int db__cursor_txn(DB_cursor *const cursor, DB_txn **const out) {
@@ -643,18 +648,22 @@ DB_FN int db__cursor_cmp(DB_cursor *const cursor, DB_val const *const a, DB_val 
 
 DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val *const data) {
 	if(!cursor) return DB_EINVAL;
+	// Not necessary to reserve_finish() here.
 	return db_cursor_current(CURSOR_INNER(cursor), key, data);
 }
 DB_FN int db__cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
+	reserve_finish(cursor);
 	return db_cursor_seek(CURSOR_INNER(cursor), key, data, dir);
 }
 DB_FN int db__cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
+	reserve_finish(cursor);
 	return db_cursor_first(CURSOR_INNER(cursor), key, data, dir);
 }
 DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
+	reserve_finish(cursor);
 	return db_cursor_next(CURSOR_INNER(cursor), key, data, dir);
 }
 
@@ -668,13 +677,51 @@ DB_FN int db__cursor_nextr(DB_cursor *const cursor, DB_range const *const range,
 	return db_helper_cursor_nextr(cursor, range, key, data, dir);
 }
 
-DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const data, unsigned const flags) {
+DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *const val, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	return db_cursor_put(CURSOR_INNER(cursor), key, data, flags); // TODO
+	DB_txn *const txn = cursor->txn;
+	if(!txn->temp) return DB_EACCES;
+	reserve_finish(cursor);
+
+	if(flags & ~(DB_NOOVERWRITE|DB_CURRENT|DB_NOOVERWRITE)) return DB_ENOTSUP;
+	size_t len;
+	int rc = 0;
+	if(DB_RESERVE & flags) {
+		cursor->has_reserve = 1;
+		return db_cursor_put(CURSOR_INNER(cursor), key, val, flags);
+	}
+	if(DB_CURRENT & flags) {
+		rc = db_cursor_current(CURSOR_INNER(cursor), key, NULL);
+		if(rc < 0) return rc;
+	}
+	if(txn->log) {
+		rc = fprintf(txn->log, "\nP:%llu;%llu;",
+			(unsigned long long)key->size,
+			(unsigned long long)val->size);
+		if(rc < 0) goto cleanup;
+		len = fwrite(key->data, 1, key->size, txn->log);
+		if(len < key->size) rc = DB_EIO;
+		if(rc < 0) goto cleanup;
+		len = fwrite(val->data, 1, val->size, txn->log);
+		if(len < val->size) rc = DB_EIO;
+		if(rc < 0) goto cleanup;
+	}
+	rc = db_cursor_put(CURSOR_INNER(cursor), key, val, flags & ~DB_CURRENT);
+	if(rc < 0) goto cleanup;
+	if(txn->log) {
+		txn->length = ftell(txn->log);
+		assert(txn->length >= 0);
+	}
+cleanup:
+	if(txn->log && rc < 0) {
+		int x = err(fseek(txn->log, txn->length, SEEK_SET));
+		assert(x >= 0);
+	}
+	return rc;
 }
 DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
-	if(!cursor) return DB_EINVAL;
-	return db_cursor_del(CURSOR_INNER(cursor), flags); // TODO
+	reserve_finish(cursor);
+	return db_helper_cursor_del(cursor, flags);
 }
 
 DB_BASE_V0(distributed)

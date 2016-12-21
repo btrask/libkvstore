@@ -123,7 +123,7 @@ extern DB_base const db_base_distributed[1];
 
 int db_helper_get(DB_txn *const txn, DB_val const *const key, DB_val *const data);
 int db_helper_put(DB_txn *const txn, DB_val const *const key, DB_val *const data, unsigned const flags);
-int db_helper_del(DB_txn *const txn, DB_val const *const key, unsigned const flags); // Possibly slow.
+int db_helper_del(DB_txn *const txn, DB_val const *const key, unsigned const flags); // For write-optimized back-ends, implement db_del and use the helper for db_cursor_del.
 
 int db_helper_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out); // Very slow.
 int db_helper_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out); // Very slow and can bloat transactions.
@@ -131,6 +131,8 @@ int db_helper_delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 int db_helper_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 int db_helper_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 int db_helper_cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
+
+int db_helper_cursor_del(DB_cursor *const cursor, unsigned const flags);
 
 #endif
 

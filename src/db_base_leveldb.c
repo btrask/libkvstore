@@ -683,7 +683,7 @@ DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *con
 }
 DB_FN int db__cursor_del(DB_cursor *const cursor, unsigned const flags) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_del(CURSOR_INNER(cursor), flags);
+	int rc = db_helper_cursor_del(cursor, flags);
 	ldb_cursor_storage_invalidate((LDB_cursor *)db_wrbuf_cursor_main(CURSOR_INNER(cursor)));
 	return rc;
 }
