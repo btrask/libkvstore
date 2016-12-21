@@ -11,7 +11,7 @@ struct DB_cursor {
 	DB_base const *isa;
 	size_t key_max;
 	unsigned char *bufs[3];
-	DB_val pfx[1];
+	DB_range keyspace[1];
 	DB_val key[1];
 	DB_range range[1];
 	// Inner cursor
@@ -21,7 +21,7 @@ struct DB_cursor {
 static bool key_ok(DB_cursor *const cursor, DB_val const *const key) {
 	assert(cursor);
 	if(!key) return true;
-	return cursor->pfx->size + key->size < cursor->key_max;
+	return cursor->keyspace->min->size + key->size < cursor->key_max;
 }
 static bool range_ok(DB_cursor *const cursor, DB_range const *const range) {
 	return key_ok(cursor, range->min) && key_ok(cursor, range->max);
@@ -30,7 +30,7 @@ static DB_val *pfx_internal(DB_cursor *const cursor, DB_val const *const key, DB
 	assert(cursor);
 	if(!key) return NULL;
 	DB_val *const out = storage;
-	DB_val const *const a = cursor->pfx;
+	DB_val const *const a = cursor->keyspace->min;
 	DB_val const *const b = key;
 	size_t const n = a->size;
 	assert(a->size + b->size < cursor->key_max);
@@ -52,9 +52,29 @@ static DB_range *pfx_range(DB_cursor *const cursor, DB_range const *const range)
 }
 static void key_strip(DB_cursor *const cursor, DB_val const *const src, DB_val *const dst) {
 	if(!dst) return;
-	DB_val const *const pfx = cursor->pfx;
+	DB_val const *const pfx = cursor->keyspace->min;
 	dst->data = src->data + pfx->size;
 	dst->size = src->size - pfx->size;
+}
+
+static void genmax(DB_range *const range) {
+	assert(range);
+	unsigned char *const out = range->max->data;
+	memcpy(out, range->min->data, range->min->size);
+	range->max->size = range->min->size;
+	size_t i = range->max->size;
+	while(i--) {
+		if(out[i] < 0xff) {
+			out[i]++;
+			return;
+		} else {
+			out[i] = 0;
+		}
+	}
+	assert(!"range overflow");
+	// TODO: It would be nice to represent an unbounded range maximum
+	// by {0, NULL}, but our range code would probably need a lot of
+	// special cases to handle it.
 }
 
 
@@ -83,10 +103,13 @@ DB_FN int db__cursor_init(DB_txn *const fake, DB_cursor *const cursor) {
 		if(rc < 0) goto cleanup;
 	}
 
-	*cursor->pfx = (DB_val){ txn->pfx->size, malloc(txn->pfx->size+1) };
-	if(!cursor->pfx->data) rc = DB_ENOMEM;
+	*cursor->keyspace->min = (DB_val){ txn->pfx->size, malloc(txn->pfx->size+1) };
+	*cursor->keyspace->max = (DB_val){ txn->pfx->size, malloc(txn->pfx->size+1) };
+	if(!cursor->keyspace->min->data) rc = DB_ENOMEM;
+	if(!cursor->keyspace->max->data) rc = DB_ENOMEM;
 	if(rc < 0) goto cleanup;
-	memcpy(cursor->pfx->data, txn->pfx->data, txn->pfx->size);
+	memcpy(cursor->keyspace->min->data, txn->pfx->data, txn->pfx->size);
+	genmax(cursor->keyspace);
 
 cleanup:
 	if(rc < 0) db_cursor_destroy(cursor);
@@ -96,8 +119,10 @@ DB_FN void db__cursor_destroy(DB_cursor *const cursor) {
 	if(!cursor) return;
 	db_cursor_destroy(CURSOR_INNER(cursor));
 	cursor->key_max = 0;
-	free(cursor->pfx->data); cursor->pfx->data = NULL;
-	cursor->pfx->size = 0;
+	free(cursor->keyspace->min->data); cursor->keyspace->min->data = NULL;
+	free(cursor->keyspace->max->data); cursor->keyspace->max->data = NULL;
+	cursor->keyspace->min->size = 0;
+	cursor->keyspace->max->size = 0;
 	memset(cursor->key, 0, sizeof(*cursor->key));
 	memset(cursor->range, 0, sizeof(*cursor->range));
 	for(size_t i = 0; i < numberof(cursor->bufs); i++) {
@@ -128,19 +153,22 @@ DB_FN int db__cursor_current(DB_cursor *const cursor, DB_val *const key, DB_val 
 DB_FN int db__cursor_seek(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
 	if(!key_ok(cursor, key)) return DB_BAD_VALSIZE;
-	int rc = db_cursor_seek(CURSOR_INNER(cursor), pfx_key(cursor, key), data, dir);
+	int rc = db_cursor_seekr(CURSOR_INNER(cursor),
+		cursor->keyspace, pfx_key(cursor, key), data, dir);
 	if(rc >= 0 && 0 != dir) key_strip(cursor, cursor->key, key);
 	return rc;
 }
 DB_FN int db__cursor_first(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_first(CURSOR_INNER(cursor), key, data, dir);
+	int rc = db_cursor_firstr(CURSOR_INNER(cursor),
+		cursor->keyspace, key, data, dir);
 	if(rc >= 0) key_strip(cursor, key, key);
 	return rc;
 }
 DB_FN int db__cursor_next(DB_cursor *const cursor, DB_val *const key, DB_val *const data, int const dir) {
 	if(!cursor) return DB_EINVAL;
-	int rc = db_cursor_next(CURSOR_INNER(cursor), key, data, dir);
+	int rc = db_cursor_nextr(CURSOR_INNER(cursor),
+		cursor->keyspace, key, data, dir);
 	if(rc >= 0) key_strip(cursor, key, key);
 	return rc;
 }
