@@ -92,11 +92,15 @@ typedef struct {
 	void *ctx;
 } DB_print_data;
 
-typedef int (*DB_commit_func)(void *ctx, DB_env *const env, FILE *const log, unsigned char const *const hash);
+typedef int (*DB_commit_func)(void *ctx, DB_env *const env, FILE *const log);
 typedef struct {
 	DB_commit_func fn;
 	void *ctx;
 } DB_commit_data;
+typedef struct {
+	DB_val txn_id[1];
+	FILE *log;
+} DB_apply_data;
 
 #define DB_CFG_MAPSIZE 1 // size_t *data
 #define DB_CFG_COMPARE 2 // DB_cmp_data *data
@@ -105,10 +109,12 @@ typedef struct {
 #define DB_CFG_LOG 5 // DB_print_data *data
 #define DB_CFG_INNERDB 6 // DB_env *set (takes ownership) / DB_env **get
 #define DB_CFG_COMMIT 7 // DB_commit_data *data
-#define DB_CFG_KEYSIZE 8 // size_t *data (might be read-only)
-#define DB_CFG_FLAGS 9 // unsigned *data (DB_NOSYNC, DB_RDONLY)
-#define DB_CFG_FILENAME 10 // char const *set / char const **get
-#define DB_CFG_FILEMODE 11 // int *data (e.g. 0644)
+#define DB_CFG_APPLY 8 // DB_apply_data *data
+#define DB_CFG_TXNID 9 // DB_val *data
+#define DB_CFG_KEYSIZE 10 // size_t *data (might be read-only)
+#define DB_CFG_FLAGS 11 // unsigned *data (DB_NOSYNC, DB_RDONLY)
+#define DB_CFG_FILENAME 12 // char const *set / char const **get
+#define DB_CFG_FILEMODE 13 // int *data (e.g. 0644)
 
 DB_base const *db_base_find(char const *const name);
 

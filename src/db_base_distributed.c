@@ -11,8 +11,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <openssl/sha.h>
-
 #include "liblmdb/lmdb.h"
 #include "db_base_internal.h"
 #include "db_wrbuf.h"
@@ -21,20 +19,17 @@
 
 #define DB_PATH_MAX (1023+1)
 
+#define TXNID_MAX 256
 #define KEY_MAX 510
 #define VAL_MAX (1024*1024*1)
 #define CMD_MAX (1024*1024*1)
 
-#define DB_VAL_STORAGE(val, len) \
-	unsigned char __buf_##val[(len)]; \
-	*(val) = (DB_val){ 0, __buf_##val };
-
 enum {
-	PFX_META = 0x00,
-	PFX_MAIN = 0x01,
+	PFX_META = 'M',
+	PFX_MAIN = 0x00, // For compressability
 };
 enum {
-	META_TXNHASH = 0x00,
+	META_TXNID = 'I',
 };
 
 struct DB_env {
@@ -101,83 +96,50 @@ static int err(int x) {
 	if(x < 0) return -errno;
 	return x;
 }
-
-static int fhash(FILE *const file, unsigned char *const out) {
-/*	SHA256_CTX algo[1];
-	unsigned char buf[1024*4];
-	size_t len;
-	int rc;
-	rc = SHA256_Init(algo);
-	assert(rc >= 0);
-	for(;;) {
-		len = fread(buf, 1, sizeof(buf), file);
-		rc = SHA256_Update(algo, buf, len);
-		assert(rc >= 0);
-		if(len < sizeof(buf)) {
-			if(feof(file)) break;
-			return -1;
-		}
-	}
-	rc = SHA256_Final(out, algo);
-	assert(rc >= 0);*/
-	return 0;
-}
-
-DB_FN int db__apply(DB_env *const env, FILE *const log, unsigned char const *const hash) {
+static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 	if(!env) return DB_EINVAL;
+	if(!data) return DB_EINVAL;
+	FILE *const log = data->log;
 	if(!log) return DB_EINVAL;
-	if(!hash) return DB_EINVAL;
 
 	DB_txn *txn = NULL;
 	DB_val key[1], val[1];
-	unsigned char digest[SHA256_DIGEST_LENGTH];
+	unsigned char txnid[TXNID_MAX];
 	unsigned char *keybuf = NULL;
 	unsigned char *valbuf = NULL;
 	size_t len;
 	int rc = 0;
 
-	rc = fhash(log, digest);
-	if(rc < 0) {
-		rc = DB_EIO;
-		goto cleanup;
-	}
-	rc = memcmp(hash, digest, sizeof(digest));
-	if(0 != rc) {
-		rc = DB_CORRUPTED;
-		goto cleanup;
-	}
-	rc = err(fseek(log, 0, SEEK_SET));
-	if(rc < 0) goto cleanup;
-
 	rc = db_txn_begin(env->main, NULL, DB_RDWR, &txn);
 	if(rc < 0) goto cleanup;
 
-	unsigned hashlen = 0;
-	fscanf(log, "X:%u;", &hashlen);
-	if(sizeof(digest) != hashlen) rc = DB_CORRUPTED;
+	unsigned txnidlen = 0;
+	fscanf(log, "I:%u;", &txnidlen);
+	if(txnidlen > TXNID_MAX) {
+		rc = DB_CORRUPTED;
+		goto cleanup;
+	}
+	len = fread(txnid, 1, txnidlen, log);
+	if(len < txnidlen) rc = DB_EIO;
 	if(rc < 0) goto cleanup;
 
-	len = fread(digest, 1, sizeof(digest), log);
-	if(len < sizeof(digest)) rc = DB_EIO;
-	if(rc < 0) goto cleanup;
-
-	unsigned char meta[2] = { PFX_META, META_TXNHASH };
+	unsigned char meta[2] = { PFX_META, META_TXNID };
 	*key = (DB_val){ sizeof(meta), meta };
 	*val = (DB_val){ 0, NULL };
 	rc = db_get(txn, key, val);
 	if(DB_NOTFOUND == rc) rc = 0;
 	if(rc < 0) goto cleanup;
-	if(sizeof(digest) != val->size) {
+	if(txnidlen != val->size) {
 		rc = DB_CORRUPTED;
 		goto cleanup;
 	}
-	rc = memcmp(val->data, digest, sizeof(digest));
+	rc = memcmp(val->data, txnid, txnidlen);
 	if(0 != rc) {
 		rc = DB_CORRUPTED;
 		goto cleanup;
 	}
 
-	*val = (DB_val){ sizeof(digest), (void *)hash };
+	*val = *data->txn_id;
 	rc = db_put(txn, key, val, 0);
 	if(rc < 0) goto cleanup;
 
@@ -236,8 +198,6 @@ DB_FN int db__apply(DB_env *const env, FILE *const log, unsigned char const *con
 		if(rc < 0) goto cleanup;
 	}
 
-	// TODO: Write new hash
-
 	rc = db_txn_commit(txn); txn = NULL;
 	if(rc < 0) goto cleanup;
 cleanup:
@@ -245,9 +205,12 @@ cleanup:
 	free(valbuf); valbuf = NULL;
 	return rc;
 }
-#define db_apply db__apply // TODO
-static int default_commit(void *ctx, DB_env *const env, FILE *const log, unsigned char const *const hash) {
-	return db_apply(env, log, hash);
+static int default_commit(void *ctx, DB_env *const env, FILE *const log) {
+	DB_apply_data data = {
+		.txn_id = {{ 0, NULL }},
+		.log = log,
+	};
+	return db_env_set_config(env, DB_CFG_APPLY, &data);
 }
 
 
@@ -276,7 +239,17 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 	case DB_CFG_COMMAND: *(DB_cmd_data *)data = *env->cmd; return 0;
 	case DB_CFG_INNERDB: *(DB_env **)data = env->main; return 0;
 	case DB_CFG_COMMIT: *(DB_commit_data *)data = *env->commit; return 0;
-	case DB_CFG_KEYSIZE: {
+	case DB_CFG_APPLY: return DB_EINVAL;
+	case DB_CFG_TXNID: {
+		unsigned char buf[2] = { PFX_META, META_TXNID };
+		DB_val key = { sizeof(buf), buf };
+		DB_txn *txn = NULL;
+		int rc = db_txn_begin(env->main, NULL, DB_RDONLY, &txn);
+		if(rc < 0) return rc;
+		rc = db_get(txn, &key, data);
+		db_txn_abort(txn);
+		return rc;
+	} case DB_CFG_KEYSIZE: {
 		int rc = db_env_get_config(env->main, type, data);
 		if(rc < 0) return rc;
 		(*(size_t *)data)--; // For prefix
@@ -297,7 +270,18 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		env->main = (DB_env *)data;
 		return 0;
 	case DB_CFG_COMMIT: *env->commit = *(DB_commit_data *)data; return 0;
-	case DB_CFG_KEYSIZE: {
+	case DB_CFG_APPLY: return apply_internal(env, data);
+	case DB_CFG_TXNID: {
+		unsigned char buf[2] = { PFX_META, META_TXNID };
+		DB_val key = { sizeof(buf), buf };
+		DB_val val = *(DB_val *)data;
+		DB_txn *txn = NULL;
+		int rc = db_txn_begin(env->main, NULL, DB_RDWR, &txn);
+		if(rc < 0) return rc;
+		rc = db_put(txn, &key, &val, 0);
+		if(rc < 0) { db_txn_abort(txn); return rc; }
+		return db_txn_commit(txn);
+	} case DB_CFG_KEYSIZE: {
 		(*(size_t *)data)++; // For prefix
 		return db_env_get_config(env->main, type, data);
 	} case DB_CFG_FLAGS: env->flags = *(unsigned *)data; return 0;
@@ -400,13 +384,13 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 			if(rc < 0) goto cleanup;
 			//remove(path);
 
-			unsigned char buf[2] = { PFX_META, META_TXNHASH };
+			unsigned char buf[2] = { PFX_META, META_TXNID };
 			DB_val key = { sizeof(buf), buf };
 			DB_val val = { 0, NULL };
 			rc = db_get(txn->main, &key, &val);
 			if(DB_NOTFOUND == rc) rc = 0;
 			if(rc < 0) goto cleanup;
-			rc = fprintf(txn->log, "X:%u;", (unsigned)val.size);
+			rc = fprintf(txn->log, "I:%u;", (unsigned)val.size);
 			if(rc < 0) {
 				rc = DB_EIO;
 				goto cleanup;
@@ -429,7 +413,6 @@ DB_FN int db__txn_commit_destroy(DB_txn *const txn) {
 	DB_env *const env = txn->env;
 	FILE *log = NULL;
 	size_t length = 0;
-	unsigned char digest[SHA256_DIGEST_LENGTH];
 	int rc = 0;
 	if(!txn->temp) goto cleanup; // DB_RDONLY
 	if(txn->child) {
@@ -457,19 +440,11 @@ DB_FN int db__txn_commit_destroy(DB_txn *const txn) {
 
 	rc = err(fseek(log, 0, SEEK_SET));
 	if(rc < 0) goto cleanup;
-	rc = fhash(log, digest);
-	if(rc < 0) {
-		rc = DB_EIO;
-		goto cleanup;
-	}
-
-	rc = err(fseek(log, 0, SEEK_SET));
-	if(rc < 0) goto cleanup;
 	if(!env->commit->fn) {
 		rc = DB_PANIC;
 		goto cleanup;
 	}
-	rc = env->commit->fn(env->commit->ctx, env, log, digest);
+	rc = env->commit->fn(env->commit->ctx, env, log);
 	if(rc < 0) goto cleanup;
 
 cleanup:
