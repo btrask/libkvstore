@@ -289,9 +289,6 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 }
 DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
-	// TODO: We should have a way of swapping out the inner env.
-	// And also a way of getting it to configure directly?
-	// Ownership becomes a little bit complex...
 	switch(type) {
 	case DB_CFG_TXNSIZE: return DB_ENOTSUP; // TODO
 	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
