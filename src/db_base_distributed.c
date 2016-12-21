@@ -276,7 +276,12 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 	case DB_CFG_COMMAND: *(DB_cmd_data *)data = *env->cmd; return 0;
 	case DB_CFG_INNERDB: *(DB_env **)data = env->main; return 0;
 	case DB_CFG_COMMIT: *(DB_commit_data *)data = *env->commit; return 0;
-	case DB_CFG_FLAGS: *(unsigned *)data = env->flags; return 0;
+	case DB_CFG_KEYSIZE: {
+		int rc = db_env_get_config(env->main, type, data);
+		if(rc < 0) return rc;
+		(*(size_t *)data)--; // For prefix
+		return 0;
+	} case DB_CFG_FLAGS: *(unsigned *)data = env->flags; return 0;
 	case DB_CFG_FILENAME: *(char const **)data = env->path; return 0;
 	case DB_CFG_FILEMODE: *(int *)data = env->mode; return 0;
 	default: return db_env_get_config(env->main, type, data);
@@ -295,7 +300,10 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		env->main = (DB_env *)data;
 		return 0;
 	case DB_CFG_COMMIT: *env->commit = *(DB_commit_data *)data; return 0;
-	case DB_CFG_FLAGS: env->flags = *(unsigned *)data; return 0;
+	case DB_CFG_KEYSIZE: {
+		(*(size_t *)data)++; // For prefix
+		return db_env_get_config(env->main, type, data);
+	} case DB_CFG_FLAGS: env->flags = *(unsigned *)data; return 0;
 	case DB_CFG_FILENAME:
 		free(env->path);
 		env->path = data ? strdup(data) : NULL;
