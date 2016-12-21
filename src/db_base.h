@@ -111,10 +111,11 @@ typedef struct {
 #define DB_CFG_COMMIT 7 // DB_commit_data *data
 #define DB_CFG_APPLY 8 // DB_apply_data *data
 #define DB_CFG_TXNID 9 // DB_val *data
-#define DB_CFG_KEYSIZE 10 // size_t *data (might be read-only)
-#define DB_CFG_FLAGS 11 // unsigned *data (DB_NOSYNC, DB_RDONLY)
-#define DB_CFG_FILENAME 12 // char const *set / char const **get
-#define DB_CFG_FILEMODE 13 // int *data (e.g. 0644)
+#define DB_CFG_TXNORDER 10 // int *data (as boolean)
+#define DB_CFG_KEYSIZE 11 // size_t *data (might be read-only)
+#define DB_CFG_FLAGS 12 // unsigned *data (DB_NOSYNC, DB_RDONLY)
+#define DB_CFG_FILENAME 13 // char const *set / char const **get
+#define DB_CFG_FILEMODE 14 // int *data (e.g. 0644)
 
 DB_base const *db_base_find(char const *const name);
 

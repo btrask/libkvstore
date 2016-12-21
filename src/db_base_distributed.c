@@ -41,6 +41,7 @@ struct DB_env {
 	unsigned flags;
 	char *path;
 	int mode;
+	bool ordered;
 };
 struct DB_txn {
 	DB_base const *isa;
@@ -61,6 +62,22 @@ struct DB_cursor {
 };
 #define CURSOR_INNER(c) ((c)+1)
 
+static int put_ordered(DB_cursor *const cursor, DB_val *const key, DB_val *const val, unsigned const flags, bool const ordered) {
+	unsigned xflags = ordered ? 0 : DB_NOOVERWRITE;
+	DB_val const wr = val ? *val : (DB_val){ 0, NULL };
+	DB_val rd = wr; // Even if val is null, we need to check.
+	int rc = db_cursor_put(cursor, key, &rd, flags | xflags);
+	if(val) *val = rd;
+	if(!ordered && DB_KEYEXIST == rc) {
+		// In unordered mode, we can't overwrite values.
+		// However, if the new value is the same, that's OK.
+		if(wr.size != rd.size) return rc;
+		if(DB_RESERVE & flags) return DB_ENOTSUP; // TODO
+		int x = db_cursor_cmp(cursor, &wr, &rd);
+		if(0 == x) rc = 0;
+	}
+	return rc;
+}
 static void reserve_finish(DB_cursor *const cursor) {
 	if(!cursor) return;
 	if(!cursor->txn->temp) return;
@@ -70,7 +87,7 @@ static void reserve_finish(DB_cursor *const cursor) {
 	int rc = db_cursor_current(CURSOR_INNER(cursor), key, val);
 	assert(rc >= 0);
 	DB_txn *const txn = cursor->txn;
-	if(!txn->log) return;
+	if(!txn->log) goto cleanup;
 
 	rc = fprintf(txn->log, "\nP:%llu;%llu;",
 		(unsigned long long)key->size,
@@ -90,6 +107,7 @@ cleanup:
 	// We could try "reserving" space in the log, and then going
 	// back and overwriting it, but that wouldn't necessarily be
 	// any less error-prone.
+	cursor->has_reserve = false;
 }
 
 static int err(int x) {
@@ -103,6 +121,7 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 	if(!log) return DB_EINVAL;
 
 	DB_txn *txn = NULL;
+	DB_cursor *cursor = NULL;
 	DB_val key[1], val[1];
 	unsigned char txnid[TXNID_MAX];
 	unsigned char *keybuf = NULL;
@@ -112,33 +131,48 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 
 	rc = db_txn_begin(env->main, NULL, DB_RDWR, &txn);
 	if(rc < 0) goto cleanup;
-
-	unsigned txnidlen = 0;
-	fscanf(log, "I:%u;", &txnidlen);
-	if(txnidlen > TXNID_MAX) {
-		rc = DB_CORRUPTED;
-		goto cleanup;
-	}
-	len = fread(txnid, 1, txnidlen, log);
-	if(len < txnidlen) rc = DB_EIO;
+	rc = db_txn_cursor(txn, &cursor);
 	if(rc < 0) goto cleanup;
 
 	unsigned char meta[2] = { PFX_META, META_TXNID };
 	*key = (DB_val){ sizeof(meta), meta };
-	*val = (DB_val){ 0, NULL };
-	rc = db_get(txn, key, val);
-	if(DB_NOTFOUND == rc) rc = 0;
-	if(rc < 0) goto cleanup;
-	if(txnidlen != val->size) {
-		rc = DB_CORRUPTED;
-		goto cleanup;
-	}
-	rc = memcmp(val->data, txnid, txnidlen);
-	if(0 != rc) {
-		rc = DB_CORRUPTED;
-		goto cleanup;
-	}
+	if(env->ordered) {
+		char type = 0;
+		unsigned txnidlen = 0;
+		fscanf(log, "%c:%u;", &type, &txnidlen);
+		if('O' != type) {
+			rc = DB_BAD_TXN;
+			goto cleanup;
+		}
+		if(txnidlen > TXNID_MAX) {
+			rc = DB_CORRUPTED;
+			goto cleanup;
+		}
+		len = fread(txnid, 1, txnidlen, log);
+		if(len < txnidlen) rc = DB_EIO;
+		if(rc < 0) goto cleanup;
 
+		*val = (DB_val){ 0, NULL };
+		rc = db_get(txn, key, val);
+		if(DB_NOTFOUND == rc) rc = 0;
+		if(rc < 0) goto cleanup;
+		if(txnidlen != val->size) {
+			rc = DB_CORRUPTED;
+			goto cleanup;
+		}
+		rc = memcmp(val->data, txnid, txnidlen);
+		if(0 != rc) {
+			rc = DB_CORRUPTED;
+			goto cleanup;
+		}
+	} else {
+		char type = 0;
+		fscanf(log, "%c:", &type);
+		if('U' != type) {
+			rc = DB_BAD_TXN;
+			goto cleanup;
+		}
+	}
 	*val = *data->txn_id;
 	rc = db_put(txn, key, val, 0);
 	if(rc < 0) goto cleanup;
@@ -159,6 +193,7 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 			fscanf(log, "%llu;", &keylen);
 			if(0 == keylen) rc = DB_BAD_VALSIZE;
 			if(keylen > KEY_MAX) rc = DB_BAD_VALSIZE;
+			if(!env->ordered) rc = DB_BAD_TXN;
 		} else if('!' == type) {
 			fscanf(log, "%llu;", &keylen);
 			if(keylen > CMD_MAX) rc = DB_BAD_VALSIZE;
@@ -190,7 +225,7 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 
 		*key = (DB_val){ 1+keylen, 0+keybuf };
 		*val = (DB_val){ 0+vallen, 0+valbuf };
-		if('P' == type) rc = db_put(txn, key, val, 0);
+		if('P' == type) rc = put_ordered(cursor, key, val, 0, env->ordered);
 		if('D' == type) rc = db_del(txn, key, 0);
 		if('!' == type) rc = db_cmd(txn, 1+keybuf, 0+keylen);
 		free(keybuf); keybuf = NULL;
@@ -201,6 +236,8 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 	rc = db_txn_commit(txn); txn = NULL;
 	if(rc < 0) goto cleanup;
 cleanup:
+	cursor = NULL;
+	db_txn_abort(txn); txn = NULL;
 	free(keybuf); keybuf = NULL;
 	free(valbuf); valbuf = NULL;
 	return rc;
@@ -226,6 +263,7 @@ DB_FN int db__env_init(DB_env *const env) {
 	env->path = NULL;
 	env->mode = 0600;
 	env->commit->fn = default_commit;
+	env->ordered = true;
 
 	rc = db_env_create_base("mdb", &env->main);
 	if(rc < 0) goto cleanup;
@@ -249,7 +287,8 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 		rc = db_get(txn, &key, data);
 		db_txn_abort(txn);
 		return rc;
-	} case DB_CFG_KEYSIZE: {
+	} case DB_CFG_TXNORDER: *(int *)data = env->ordered; return 0;
+	case DB_CFG_KEYSIZE: {
 		int rc = db_env_get_config(env->main, type, data);
 		if(rc < 0) return rc;
 		(*(size_t *)data)--; // For prefix
@@ -281,7 +320,8 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		rc = db_put(txn, &key, &val, 0);
 		if(rc < 0) { db_txn_abort(txn); return rc; }
 		return db_txn_commit(txn);
-	} case DB_CFG_KEYSIZE: {
+	} case DB_CFG_TXNORDER: env->ordered = *(int *)data; return 0;
+	case DB_CFG_KEYSIZE: {
 		(*(size_t *)data)++; // For prefix
 		return db_env_get_config(env->main, type, data);
 	} case DB_CFG_FLAGS: env->flags = *(unsigned *)data; return 0;
@@ -345,6 +385,7 @@ DB_FN void db__env_destroy(DB_env *const env) {
 	env->flags = 0;
 	free(env->path); env->path = NULL;
 	env->mode = 0;
+	env->ordered = 0;
 	env->isa = NULL;
 	assert_zeroed(env, 1);
 }
@@ -384,22 +425,30 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 			if(rc < 0) goto cleanup;
 			//remove(path);
 
-			unsigned char buf[2] = { PFX_META, META_TXNID };
-			DB_val key = { sizeof(buf), buf };
-			DB_val val = { 0, NULL };
-			rc = db_get(txn->main, &key, &val);
-			if(DB_NOTFOUND == rc) rc = 0;
-			if(rc < 0) goto cleanup;
-			rc = fprintf(txn->log, "I:%u;", (unsigned)val.size);
-			if(rc < 0) {
-				rc = DB_EIO;
-				goto cleanup;
+			if(txn->env->ordered) {
+				unsigned char buf[2] = { PFX_META, META_TXNID };
+				DB_val key = { sizeof(buf), buf };
+				DB_val val = { 0, NULL };
+				rc = db_get(txn->main, &key, &val);
+				if(DB_NOTFOUND == rc) rc = 0;
+				if(rc < 0) goto cleanup;
+				rc = fprintf(txn->log, "O:%u;", (unsigned)val.size);
+				if(rc < 0) {
+					rc = DB_EIO;
+					goto cleanup;
+				}
+				size_t len = fwrite(val.data, 1, val.size, txn->log);
+				if(len < val.size) rc = DB_EIO;
+				if(rc < 0) goto cleanup;
+				txn->length = ftell(txn->log);
+				assert(txn->length >= 0);
+			} else {
+				rc = fprintf(txn->log, "U:");
+				if(rc < 0) {
+					rc = DB_EIO;
+					goto cleanup;
+				}
 			}
-			size_t len = fwrite(val.data, 1, val.size, txn->log);
-			if(len < val.size) rc = DB_EIO;
-			if(rc < 0) goto cleanup;
-			txn->length = ftell(txn->log);
-			assert(txn->length >= 0);
 		}
 	}
 
@@ -519,6 +568,7 @@ DB_FN int db__put(DB_txn *const txn, DB_val const *const key, DB_val *const val,
 DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
 	if(!txn->temp) return DB_EACCES;
+	if(!txn->env->ordered) return DB_ENOTSUP;
 	size_t len;
 	int rc = 0;
 	if(txn->log) {
@@ -664,10 +714,11 @@ DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *con
 	reserve_finish(cursor);
 
 	if(flags & ~(DB_NOOVERWRITE|DB_CURRENT|DB_NOOVERWRITE)) return DB_ENOTSUP;
+	bool const ordered = cursor->txn->env->ordered;
 	size_t len;
 	int rc = 0;
 	if(DB_RESERVE & flags) {
-		cursor->has_reserve = 1;
+		cursor->has_reserve = true;
 		return db_cursor_put(CURSOR_INNER(cursor), key, val, flags);
 	}
 	if(DB_CURRENT & flags) {
@@ -686,7 +737,7 @@ DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *con
 		if(len < val->size) rc = DB_EIO;
 		if(rc < 0) goto cleanup;
 	}
-	rc = db_cursor_put(CURSOR_INNER(cursor), key, val, flags & ~DB_CURRENT);
+	rc = put_ordered(CURSOR_INNER(cursor), key, val, flags & ~DB_CURRENT, ordered);
 	if(rc < 0) goto cleanup;
 	if(txn->log) {
 		txn->length = ftell(txn->log);
