@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
-#include "db_prefix.h"
+#include "db_base_prefix.h"
 #include "common.h"
 
 struct DB_env {
