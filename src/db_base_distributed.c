@@ -42,7 +42,7 @@ struct DB_env {
 	DB_env *sub;
 	DB_commit_data commit[1];
 	char *logpath;
-	bool ordered;
+	bool conflict_free;
 };
 struct DB_txn {
 	DB_base const *isa;
@@ -64,14 +64,14 @@ struct DB_cursor {
 #define TXN_INNER(txn) ((txn)+1)
 #define CURSOR_INNER(c) ((c)+1)
 
-static int put_ordered(DB_cursor *const cursor, DB_val *const key, DB_val *const val, unsigned const flags, bool const ordered) {
-	unsigned xflags = ordered ? 0 : DB_NOOVERWRITE;
+static int put_cr(DB_cursor *const cursor, DB_val *const key, DB_val *const val, unsigned const flags, bool const conflict_free) {
+	unsigned xflags = conflict_free ? DB_NOOVERWRITE : 0;
 	DB_val const wr = val ? *val : (DB_val){ 0, NULL };
 	DB_val rd = wr; // Even if val is null, we need to check.
 	int rc = db_cursor_put(cursor, key, &rd, flags | xflags);
 	if(val) *val = rd;
-	if(!ordered && DB_KEYEXIST == rc) {
-		// In unordered mode, we can't overwrite values.
+	if(conflict_free && DB_KEYEXIST == rc) {
+		// In conflict free (unordered) mode, we can't overwrite values.
 		// However, if the new value is the same, that's OK.
 		if(wr.size != rd.size) return rc;
 		if(DB_RESERVE & flags) return DB_ENOTSUP; // TODO
@@ -138,7 +138,14 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 
 	unsigned char meta[2] = { PFX_META, META_TXNID };
 	*key = (DB_val){ sizeof(meta), meta };
-	if(env->ordered) {
+	if(env->conflict_free) {
+		char type = 0;
+		fscanf(log, "%c:", &type);
+		if('U' != type) {
+			rc = DB_INCOMPATIBLE;
+			goto cleanup;
+		}
+	} else {
 		char type = 0;
 		unsigned txnidlen = 0;
 		fscanf(log, "%c:%u;", &type, &txnidlen);
@@ -169,13 +176,6 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 			rc = DB_BAD_TXN;
 			goto cleanup;
 		}
-	} else {
-		char type = 0;
-		fscanf(log, "%c:", &type);
-		if('U' != type) {
-			rc = DB_INCOMPATIBLE;
-			goto cleanup;
-		}
 	}
 	*val = *data->txn_id;
 	rc = db_put(db_prefix_txn_raw(TXN_INNER(txn)), key, val, 0);
@@ -197,7 +197,7 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 			fscanf(log, "%llu;", &keylen);
 			if(0 == keylen) rc = DB_BAD_VALSIZE;
 			if(keylen > KEY_MAX) rc = DB_BAD_VALSIZE;
-			if(!env->ordered) rc = DB_BAD_TXN;
+			if(env->conflict_free) rc = DB_BAD_TXN;
 		} else if('!' == type) {
 			fscanf(log, "%llu;", &keylen);
 			if(keylen > CMD_MAX) rc = DB_BAD_VALSIZE;
@@ -227,7 +227,7 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 
 		*key = (DB_val){ keylen, keybuf };
 		*val = (DB_val){ vallen, valbuf };
-		if('P' == type) rc = put_ordered(cursor, key, val, 0, env->ordered);
+		if('P' == type) rc = put_cr(cursor, key, val, 0, env->conflict_free);
 		if('D' == type) rc = db_del(txn, key, 0);
 		if('!' == type) rc = db_cmd(txn, keybuf, keylen);
 		free(keybuf); keybuf = NULL;
@@ -263,7 +263,7 @@ DB_FN int db__env_init(DB_env *const env) {
 	int rc = 0;
 	env->isa = db_base_distributed;
 	env->commit->fn = default_commit;
-	env->ordered = true;
+	env->conflict_free = false;
 
 	rc = db_env_create_custom(db_base_prefix, &env->sub);
 	if(rc < 0) goto cleanup;
@@ -298,7 +298,7 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 		rc = db_get(txn, &key, data);
 		db_txn_abort(txn);
 		return rc;
-	} case DB_CFG_TXNORDER: *(int *)data = env->ordered; return 0;
+	} case DB_CFG_CONFLICTFREE: *(int *)data = env->conflict_free; return 0;
 	case DB_CFG_PREFIX: return DB_ENOTSUP;
 	default: return db_env_get_config(env->sub, type, data);
 	}
@@ -320,7 +320,7 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		rc = db_put(txn, &key, &val, 0);
 		if(rc < 0) { db_txn_abort(txn); return rc; }
 		return db_txn_commit(txn);
-	} case DB_CFG_TXNORDER: env->ordered = *(int *)data; return 0;
+	} case DB_CFG_CONFLICTFREE: env->conflict_free = *(int *)data; return 0;
 	case DB_CFG_PREFIX: return DB_ENOTSUP;
 	default: return db_env_set_config(env->sub, type, data);
 	}
@@ -357,7 +357,7 @@ DB_FN void db__env_destroy(DB_env *const env) {
 	env->commit->fn = NULL;
 	env->commit->ctx = NULL;
 	free(env->logpath); env->logpath = NULL;
-	env->ordered = 0;
+	env->conflict_free = 0;
 	env->isa = NULL;
 	assert_zeroed(env, 1);
 }
@@ -394,7 +394,13 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 			goto cleanup;
 		}
 
-		if(txn->env->ordered) {
+		if(txn->env->conflict_free) {
+			rc = fprintf(txn->log, "U:");
+			if(rc < 0) {
+				rc = DB_EIO;
+				goto cleanup;
+			}
+		} else {
 			unsigned char buf[2] = { PFX_META, META_TXNID };
 			DB_val key = { sizeof(buf), buf };
 			DB_val val = { 0, NULL };
@@ -412,12 +418,6 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 			if(rc < 0) goto cleanup;
 			txn->length = ftell(txn->log);
 			assert(txn->length >= 0);
-		} else {
-			rc = fprintf(txn->log, "U:");
-			if(rc < 0) {
-				rc = DB_EIO;
-				goto cleanup;
-			}
 		}
 	}
 
@@ -541,7 +541,7 @@ DB_FN int db__put(DB_txn *const txn, DB_val const *const key, DB_val *const val,
 }
 DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 	if(!txn) return DB_EINVAL;
-	if(!txn->env->ordered) return DB_ENOTSUP;
+	if(txn->env->conflict_free) return DB_ENOTSUP;
 	size_t len;
 	int rc = 0;
 	if(MODE_RECORDING == txn->mode) {
@@ -689,7 +689,7 @@ DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *con
 	reserve_finish(cursor);
 
 	if(flags & ~(DB_NOOVERWRITE|DB_CURRENT|DB_NOOVERWRITE)) return DB_ENOTSUP;
-	bool const ordered = cursor->txn->env->ordered;
+	bool const conflict_free = cursor->txn->env->conflict_free;
 	size_t len;
 	int rc = 0;
 	if(DB_RESERVE & flags) {
@@ -712,7 +712,7 @@ DB_FN int db__cursor_put(DB_cursor *const cursor, DB_val *const key, DB_val *con
 		if(len < val->size) rc = DB_EIO;
 		if(rc < 0) goto cleanup;
 	}
-	rc = put_ordered(CURSOR_INNER(cursor), key, val, flags & ~DB_CURRENT, ordered);
+	rc = put_cr(CURSOR_INNER(cursor), key, val, flags & ~DB_CURRENT, conflict_free);
 	if(rc < 0) goto cleanup;
 	if(MODE_RECORDING == txn->mode) {
 		txn->length = ftell(txn->log);
