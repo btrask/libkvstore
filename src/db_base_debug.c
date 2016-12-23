@@ -149,12 +149,6 @@ DB_FN void db__txn_abort_destroy(DB_txn *const txn) {
 	txn->parent = NULL;
 	assert_zeroed(txn, 1);
 }
-DB_FN int db__txn_upgrade(DB_txn *const txn, unsigned const flags) {
-	if(!txn) return DB_EINVAL;
-	int rc = db_txn_upgrade(TXN_INNER(txn), flags);
-	LOG(txn->env, rc);
-	return rc;
-}
 DB_FN int db__txn_env(DB_txn *const txn, DB_env **const out) {
 	if(!txn) return DB_EINVAL;
 	if(!out) return DB_EINVAL;

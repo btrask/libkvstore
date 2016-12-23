@@ -163,10 +163,6 @@ void db_txn_abort(DB_txn *txn) {
 	db_txn_abort_destroy(txn);
 	free(txn); txn = NULL;
 }
-int db_txn_upgrade(DB_txn *const txn, unsigned const flags) {
-	if(!txn || !txn->isa) return DB_EINVAL;
-	return txn->isa->txn_upgrade(txn, flags);
-}
 int db_txn_env(DB_txn *const txn, DB_env **const out) {
 	if(!txn || !txn->isa) return DB_EINVAL;
 	return txn->isa->txn_env(txn, out);

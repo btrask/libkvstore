@@ -145,7 +145,6 @@ int db_txn_commit_destroy(DB_txn *const txn);
 void db_txn_abort_destroy(DB_txn *const txn);
 int db_txn_commit(DB_txn *txn); // Convenience
 void db_txn_abort(DB_txn *txn); // Convenience
-int db_txn_upgrade(DB_txn *const txn, unsigned const flags);
 int db_txn_env(DB_txn *const txn, DB_env **const out);
 int db_txn_parent(DB_txn *const txn, DB_txn **const out);
 int db_txn_get_flags(DB_txn *const txn, unsigned *const flags);
