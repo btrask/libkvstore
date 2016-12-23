@@ -154,7 +154,7 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 		}
 
 		*val = (DB_val){ 0, NULL };
-		rc = db_get(txn, key, val);
+		rc = db_get(db_prefix_txn_raw(txn), key, val);
 		if(DB_NOTFOUND == rc) rc = 0;
 		if(rc < 0) goto cleanup;
 		if(txnidlen != val->size) {
@@ -175,7 +175,7 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 		}
 	}
 	*val = *data->txn_id;
-	rc = db_put(txn, key, val, 0);
+	rc = db_put(db_prefix_txn_raw(txn), key, val, 0);
 	if(rc < 0) goto cleanup;
 
 	for(;;) {
@@ -203,32 +203,30 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 		}
 		if(rc < 0) goto cleanup;
 
-		// 1. Allocations must be non-zero (undefined behavior).
-		// 2. Keys for put or del will be prefixed with PFX_MAIN.
-		// 3. Commands are stored in keybuf but not prefixed.
-		keybuf = malloc(1+keylen);
-		valbuf = malloc(1+vallen);
+		// Ensure allocations are non-zero (undefined behavior).
+		keybuf = malloc(keylen+1);
+		valbuf = malloc(vallen+1);
 		if(!keybuf || !valbuf) {
 			rc = DB_ENOMEM;
 			goto cleanup;
 		}
 		keybuf[0] = PFX_MAIN;
-		len = fread(1+keybuf, 1, keylen, log);
+		len = fread(keybuf, 1, keylen, log);
 		if(len < keylen) {
 			rc = DB_EIO;
 			goto cleanup;
 		}
-		len = fread(0+valbuf, 1, vallen, log);
+		len = fread(valbuf, 1, vallen, log);
 		if(len < vallen) {
 			rc = DB_EIO;
 			goto cleanup;
 		}
 
-		*key = (DB_val){ 1+keylen, 0+keybuf };
-		*val = (DB_val){ 0+vallen, 0+valbuf };
+		*key = (DB_val){ keylen, keybuf };
+		*val = (DB_val){ vallen, valbuf };
 		if('P' == type) rc = put_ordered(cursor, key, val, 0, env->ordered);
 		if('D' == type) rc = db_del(txn, key, 0);
-		if('!' == type) rc = db_cmd(txn, 1+keybuf, 0+keylen);
+		if('!' == type) rc = db_cmd(txn, keybuf, keylen);
 		free(keybuf); keybuf = NULL;
 		free(valbuf); valbuf = NULL;
 		if(rc < 0) goto cleanup;
