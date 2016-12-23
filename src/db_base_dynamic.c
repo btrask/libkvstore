@@ -41,6 +41,9 @@ DB_base const *db_base_find(char const *const name) {
 #ifdef DB_BASE_DISTRIBUTED
 	if(0 == strcmp(name, "distributed")) return db_base_distributed;
 #endif
+#ifdef DB_BASE_DUMMY
+	if(0 == strcmp(name, "dummy")) return db_base_dummy;
+#endif
 	return NULL;
 }
 
@@ -198,7 +201,9 @@ int db_del(DB_txn *const txn, DB_val const *const key, unsigned const flags) {
 }
 int db_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn || !txn->isa) return DB_EINVAL;
-	return txn->isa->cmd(txn, buf, len);
+	int rc = txn->isa->cmd(txn, buf, len);
+	assert(txn->isa); // Simple check that the transaction wasn't committed or aborted.
+	return rc;
 }
 
 int db_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {

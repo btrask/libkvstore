@@ -602,16 +602,7 @@ cleanup:
 	return rc;
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
-	if(!txn) return DB_EINVAL;
-/*	if(!txn->env->cmd->fn) return DB_EINVAL;
-
-	FILE *log = txn->log; txn->log = NULL;
-	int rc = txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len); // TODO
-	assert(txn->isa); // Simple check that we weren't committed/aborted.
-	txn->log = log;
-//cleanup:
-	return rc;*/
-	return DB_ENOTSUP; // TODO
+	return db_helper_cmd(txn, buf, len);
 }
 
 DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {

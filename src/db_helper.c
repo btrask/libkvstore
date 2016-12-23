@@ -26,6 +26,16 @@ int db_helper_del(DB_txn *const txn, DB_val const *const key, unsigned const fla
 	if(rc < 0) return rc;
 	return db_cursor_del(cursor, flags);
 }
+int db_helper_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
+	DB_env *env = NULL;
+	DB_cmd_data *cmd = NULL;
+	int rc = db_txn_env(txn, &env);
+	if(rc < 0) return rc;
+	rc = db_env_get_config(env, DB_CFG_COMMAND, &cmd);
+	if(rc < 0) return rc;
+	if(!cmd || !cmd->fn) return DB_EINVAL;
+	return cmd->fn(cmd->ctx, txn, buf, len);
+}
 
 int db_helper_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
 	if(!out) return DB_EINVAL;

@@ -567,11 +567,7 @@ DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const fla
 	return db_wrbuf_del(txn->tmptxn, key, flags);
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
-	if(!txn) return DB_EINVAL;
-	if(!txn->env->cmd->fn) return DB_EINVAL;
-	int rc = txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len);
-	assert(txn->isa); // Simple check that we weren't committed/aborted.
-	return rc;
+	return db_helper_cmd(txn, buf, len);
 }
 
 DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {

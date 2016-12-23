@@ -107,12 +107,12 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 	assert_zeroed(txn, 1);
 	int rc = 0;
 	txn->isa = db_base_debug;
-
-	rc = db_txn_begin_init(env->env, parent ? TXN_INNER(parent) : NULL, flags, TXN_INNER(txn));
-	if(rc < 0) goto cleanup;
 	txn->env = env;
 	txn->parent = parent;
 	txn->child = NULL;
+
+	rc = db_txn_begin_init(env->env, parent ? TXN_INNER(parent) : NULL, flags, TXN_INNER(txn));
+	if(rc < 0) goto cleanup;
 
 	if(parent) parent->child = txn;
 cleanup:
@@ -168,6 +168,7 @@ DB_FN int db__txn_get_flags(DB_txn *const txn, unsigned *const flags) {
 	return rc;
 }
 DB_FN int db__txn_cmp(DB_txn *const txn, DB_val const *const a, DB_val const *const b) {
+	assert(txn);
 	return db_txn_cmp(TXN_INNER(txn), a, b);
 }
 DB_FN int db__txn_cursor(DB_txn *const txn, DB_cursor **const out) {
@@ -199,8 +200,7 @@ DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const fla
 	return rc;
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
-	if(!txn) return DB_EINVAL;
-	int rc = db_cmd(TXN_INNER(txn), buf, len);
+	int rc = db_helper_cmd(txn, buf, len);
 	LOG(txn->env, rc);
 	return rc;
 }

@@ -115,6 +115,7 @@ extern DB_base const db_base_hyper[1];
 extern DB_base const db_base_lsmdb[1];
 extern DB_base const db_base_debug[1];
 extern DB_base const db_base_distributed[1];
+extern DB_base const db_base_dummy[1];
 
 // Helper functions
 // Use these to get a simple implementation in terms of other operations.
@@ -122,6 +123,7 @@ extern DB_base const db_base_distributed[1];
 int db_helper_get(DB_txn *const txn, DB_val const *const key, DB_val *const data);
 int db_helper_put(DB_txn *const txn, DB_val const *const key, DB_val *const data, unsigned const flags);
 int db_helper_del(DB_txn *const txn, DB_val const *const key, unsigned const flags); // For write-optimized back-ends, implement db_del and use the helper for db_cursor_del.
+int db_helper_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len);
 
 int db_helper_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out); // Very slow.
 int db_helper_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out); // Very slow and can bloat transactions.

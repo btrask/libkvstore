@@ -7,7 +7,7 @@ USE_ROCKSDB ?= 0
 USE_HYPER ?= 0
 USE_DEBUG ?= 1
 USE_DISTRIBUTED ?= 1
-# TODO: Distributed back-end still very incomplete
+USE_DUMMY ?= 1
 
 DESTDIR ?=
 PREFIX ?= /usr/local
@@ -141,6 +141,11 @@ endif
 ifeq ($(USE_DISTRIBUTED),1)
   CFLAGS += -DDB_BASE_DISTRIBUTED
   OBJECTS += $(BUILD_DIR)/src/db_base_distributed.o
+endif
+
+ifeq ($(USE_DUMMY),1)
+  CFLAGS += -DDB_BASE_DUMMY
+  OBJECTS += $(BUILD_DIR)/src/db_base_dummy.o
 endif
 
 HEADERS := \

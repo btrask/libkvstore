@@ -187,12 +187,14 @@ DB_FN size_t db__txn_size(DB_env *const env) {
 DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned const flags, DB_txn *const txn) {
 	if(!env) return DB_EINVAL;
 	if(!txn) return DB_EINVAL;
+	if(parent && parent->child) return DB_BAD_TXN;
 	assert_zeroed(txn, 1);
 	txn->isa = db_base_prefix;
 	txn->env = env;
 	txn->parent = parent;
 	int rc = db_txn_begin_init(env->sub, parent ? TXN_INNER(parent) : NULL, flags, TXN_INNER(txn));
 	if(rc < 0) goto cleanup;
+	if(parent) parent->child = txn;
 cleanup:
 	if(rc < 0) db_txn_abort_destroy(txn);
 	return rc;
@@ -264,9 +266,7 @@ DB_FN int db__del(DB_txn *const txn, DB_val const *const key, unsigned const fla
 	return db_helper_del(txn, key, flags); // TODO
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
-	if(!txn) return DB_EINVAL;
-	// TODO
-	return DB_ENOTSUP;
+	return db_helper_cmd(txn, buf, len);
 }
 
 DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
