@@ -6,6 +6,7 @@ deps/uv/uv.xcodeproj
 .DS_Store
 testdb
 testdb-lock
+testdb-log
 testdb/
 
 
