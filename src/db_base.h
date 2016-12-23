@@ -116,6 +116,9 @@ typedef struct {
 #define DB_CFG_FLAGS 12 // unsigned *data (DB_NOSYNC, DB_RDONLY)
 #define DB_CFG_FILENAME 13 // char const *set / char const **get
 #define DB_CFG_FILEMODE 14 // int *data (e.g. 0644)
+#define DB_CFG_LOCKFILE 15 // char const *set / char const **get
+#define DB_CFG_TEMPDB 16 // DB_env *set (takes ownership) / DB_env **get
+#define DB_CFG_PREFIX 17 // DB_val *data
 
 DB_base const *db_base_find(char const *const name);
 
