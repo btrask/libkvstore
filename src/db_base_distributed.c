@@ -138,48 +138,44 @@ static int apply_internal(DB_env *const env, DB_apply_data const *const data) {
 
 	unsigned char meta[2] = { PFX_META, META_TXNID };
 	*key = (DB_val){ sizeof(meta), meta };
-	if(env->conflict_free) {
-		char type = 0;
-		fscanf(log, "%c:", &type);
-		if('U' != type) {
-			rc = DB_INCOMPATIBLE;
-			goto cleanup;
-		}
-	} else {
-		char type = 0;
-		unsigned txnidlen = 0;
-		fscanf(log, "%c:%u;", &type, &txnidlen);
-		if('O' != type) {
-			rc = DB_INCOMPATIBLE;
-			goto cleanup;
-		}
-		if(txnidlen > TXNID_MAX) {
-			rc = DB_INCOMPATIBLE;
-			goto cleanup;
-		}
-		len = fread(txnid, 1, txnidlen, log);
-		if(len < txnidlen) {
-			rc = DB_EIO;
-			goto cleanup;
-		}
 
-		*val = (DB_val){ 0, NULL };
-		rc = db_get(db_prefix_txn_raw(TXN_INNER(txn)), key, val);
-		if(DB_NOTFOUND == rc) rc = 0;
-		if(rc < 0) goto cleanup;
-		if(txnidlen != val->size) {
-			rc = DB_BAD_TXN;
-			goto cleanup;
-		}
-		rc = memcmp(val->data, txnid, txnidlen);
-		if(0 != rc) {
-			rc = DB_BAD_TXN;
-			goto cleanup;
-		}
+	char const expected_type = env->conflict_free ? 'U' : 'O';
+	char type = 0;
+	unsigned txnidlen = 0;
+	fscanf(log, "%c:%u;", &type, &txnidlen);
+	if(expected_type != type) {
+		rc = DB_INCOMPATIBLE;
+		goto cleanup;
 	}
-	*val = *data->txn_id;
-	rc = db_put(db_prefix_txn_raw(TXN_INNER(txn)), key, val, 0);
+	if(txnidlen > TXNID_MAX) {
+		rc = DB_INCOMPATIBLE;
+		goto cleanup;
+	}
+	len = fread(txnid, 1, txnidlen, log);
+	if(len < txnidlen) {
+		rc = DB_EIO;
+		goto cleanup;
+	}
+
+	*val = (DB_val){ 0, NULL };
+	rc = db_get(db_prefix_txn_raw(TXN_INNER(txn)), key, val);
+	if(DB_NOTFOUND == rc) rc = 0;
 	if(rc < 0) goto cleanup;
+	if(txnidlen != val->size) {
+		rc = DB_BAD_TXN;
+		goto cleanup;
+	}
+	rc = memcmp(val->data, txnid, txnidlen);
+	if(0 != rc) {
+		rc = DB_BAD_TXN;
+		goto cleanup;
+	}
+
+	if(!env->conflict_free) {
+		*val = *data->txn_id;
+		rc = db_put(db_prefix_txn_raw(TXN_INNER(txn)), key, val, 0);
+		if(rc < 0) goto cleanup;
+	}
 
 	for(;;) {
 		char type = 0;
@@ -394,31 +390,24 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 			goto cleanup;
 		}
 
-		if(txn->env->conflict_free) {
-			rc = fprintf(txn->log, "U:");
-			if(rc < 0) {
-				rc = DB_EIO;
-				goto cleanup;
-			}
-		} else {
-			unsigned char buf[2] = { PFX_META, META_TXNID };
-			DB_val key = { sizeof(buf), buf };
-			DB_val val = { 0, NULL };
-			rc = db_get(db_prefix_txn_raw(TXN_INNER(txn)),
-				&key, &val);
-			if(DB_NOTFOUND == rc) rc = 0;
-			if(rc < 0) goto cleanup;
-			rc = fprintf(txn->log, "O:%u;", (unsigned)val.size);
-			if(rc < 0) {
-				rc = DB_EIO;
-				goto cleanup;
-			}
-			size_t len = fwrite(val.data, 1, val.size, txn->log);
-			if(len < val.size) rc = DB_EIO;
-			if(rc < 0) goto cleanup;
-			txn->length = ftell(txn->log);
-			assert(txn->length >= 0);
+		int const type = txn->env->conflict_free ? 'U' : 'O';
+		unsigned char buf[2] = { PFX_META, META_TXNID };
+		DB_val key = { sizeof(buf), buf };
+		DB_val val = { 0, NULL };
+		rc = db_get(db_prefix_txn_raw(TXN_INNER(txn)),
+			&key, &val);
+		if(DB_NOTFOUND == rc) rc = 0;
+		if(rc < 0) goto cleanup;
+		rc = fprintf(txn->log, "%c:%u;", type, (unsigned)val.size);
+		if(rc < 0) {
+			rc = DB_EIO;
+			goto cleanup;
 		}
+		size_t len = fwrite(val.data, 1, val.size, txn->log);
+		if(len < val.size) rc = DB_EIO;
+		if(rc < 0) goto cleanup;
+		txn->length = ftell(txn->log);
+		assert(txn->length >= 0);
 	}
 
 	if(parent) parent->child = txn;
