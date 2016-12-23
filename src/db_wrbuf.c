@@ -257,11 +257,13 @@ int db_wrbuf_del(DB_txn *const temp, DB_val const *const key, unsigned const fla
 }
 
 DB_cursor *db_wrbuf_cursor_temp(DB_cursor *const cursor) {
-	if(!cursor || db_base_wrbuf != cursor->isa) return NULL;
+	if(!cursor) return NULL;
+	assert(db_base_wrbuf == cursor->isa);
 	return CURSOR_TEMP(cursor);
 }
 DB_cursor *db_wrbuf_cursor_main(DB_cursor *const cursor) {
-	if(!cursor || db_base_wrbuf != cursor->isa) return NULL;
+	if(!cursor) return NULL;
+	assert(db_base_wrbuf == cursor->isa);
 	return CURSOR_MAIN(cursor);
 }
 

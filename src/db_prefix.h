@@ -7,17 +7,9 @@
 // written to the underlying data store, and stripping all prefixes read
 // from it.
 
-// Usage:
-// 1. Initialize a fake transaction as below
-// 2. Call db_cursor_init/open, casting the transaction to DB_txn
-
-// Yes, this is kind of ugly, but it allows arbitrary nesting.
-
 extern DB_base const db_base_prefix[1];
 
-typedef struct {
-	DB_base const *isa;
-	DB_val pfx[1];
-	DB_txn *txn;
-} DB_prefix_txn;
+DB_env *db_prefix_env_raw(DB_env *const env);
+DB_txn *db_prefix_txn_raw(DB_txn *const txn);
+DB_cursor *db_prefix_cursor_raw(DB_cursor *cursor);
 

@@ -36,7 +36,6 @@ struct DB_env {
 	DB_base const *isa;
 	DB_env *main;
 	DB_env *temp;
-	DB_cmd_data cmd[1];
 	DB_commit_data commit[1];
 	unsigned flags;
 	char *path;
@@ -259,6 +258,7 @@ DB_FN size_t db__env_size(void) {
 DB_FN int db__env_init(DB_env *const env) {
 	if(!env) return DB_EINVAL;
 	assert_zeroed(env, 1);
+	DB_env *inner = NULL;
 	int rc = 0;
 	env->isa = db_base_distributed;
 	env->flags = 0;
@@ -267,24 +267,35 @@ DB_FN int db__env_init(DB_env *const env) {
 	env->commit->fn = default_commit;
 	env->ordered = true;
 
-	rc = db_env_create_base("mdb", &env->main);
+	rc = db_env_create_custom(db_base_prefix, &env->main);
 	if(rc < 0) goto cleanup;
+	rc = db_env_create_base("mdb", &inner);
+	if(rc < 0) goto cleanup;
+	rc = db_env_set_config(env->main, DB_CFG_INNERDB, inner);
+	if(rc < 0) goto cleanup;
+	inner = NULL;
+
+	unsigned char buf[1] = { PFX_MAIN };
+	DB_val pfx = { sizeof(buf), buf };
+	rc = db_env_set_config(env->main, DB_CFG_PREFIX, &pfx);
+	if(rc < 0) goto cleanup;
+
 cleanup:
+	db_env_close(inner); inner = NULL;
 	if(rc < 0) db_env_destroy(env);
 	return rc;
 }
 DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
 	if(!env) return DB_EINVAL;
 	switch(type) {
-	case DB_CFG_COMMAND: *(DB_cmd_data *)data = *env->cmd; return 0;
-	case DB_CFG_INNERDB: *(DB_env **)data = env->main; return 0;
 	case DB_CFG_COMMIT: *(DB_commit_data *)data = *env->commit; return 0;
 	case DB_CFG_APPLY: return DB_EINVAL;
 	case DB_CFG_TXNID: {
 		unsigned char buf[2] = { PFX_META, META_TXNID };
 		DB_val key = { sizeof(buf), buf };
 		DB_txn *txn = NULL;
-		int rc = db_txn_begin(env->main, NULL, DB_RDONLY, &txn);
+		int rc = db_txn_begin(db_prefix_env_raw(env->main),
+			NULL, DB_RDONLY, &txn);
 		if(rc < 0) return rc;
 		rc = db_get(txn, &key, data);
 		db_txn_abort(txn);
@@ -298,6 +309,7 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 	} case DB_CFG_FLAGS: *(unsigned *)data = env->flags; return 0;
 	case DB_CFG_FILENAME: *(char const **)data = env->path; return 0;
 	case DB_CFG_FILEMODE: *(int *)data = env->mode; return 0;
+	case DB_CFG_PREFIX: return DB_ENOTSUP;
 	default: return db_env_get_config(env->main, type, data);
 	}
 }
@@ -305,11 +317,6 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 	if(!env) return DB_EINVAL;
 	switch(type) {
 	case DB_CFG_TXNSIZE: return DB_ENOTSUP; // TODO
-	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
-	case DB_CFG_INNERDB:
-		db_env_close(env->main);
-		env->main = (DB_env *)data;
-		return 0;
 	case DB_CFG_COMMIT: *env->commit = *(DB_commit_data *)data; return 0;
 	case DB_CFG_APPLY: return apply_internal(env, data);
 	case DB_CFG_TXNID: {
@@ -317,7 +324,8 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		DB_val key = { sizeof(buf), buf };
 		DB_val val = *(DB_val *)data;
 		DB_txn *txn = NULL;
-		int rc = db_txn_begin(env->main, NULL, DB_RDWR, &txn);
+		int rc = db_txn_begin(db_prefix_env_raw(env->main),
+			NULL, DB_RDWR, &txn);
 		if(rc < 0) return rc;
 		rc = db_put(txn, &key, &val, 0);
 		if(rc < 0) { db_txn_abort(txn); return rc; }
@@ -333,6 +341,7 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		if(data && !env->path) return DB_ENOMEM;
 		return 0;
 	case DB_CFG_FILEMODE: env->mode = *(int *)data; return 0;
+	case DB_CFG_PREFIX: return DB_ENOTSUP;
 	default: return db_env_set_config(env->main, type, data);
 	}
 }
@@ -380,8 +389,6 @@ DB_FN void db__env_destroy(DB_env *const env) {
 	if(!env) return;
 	db_env_close(env->main); env->main = NULL;
 	db_env_close(env->temp); env->temp = NULL;
-	env->cmd->fn = NULL;
-	env->cmd->ctx = NULL;
 	env->commit->fn = NULL;
 	env->commit->ctx = NULL;
 	env->flags = 0;
@@ -431,7 +438,8 @@ DB_FN int db__txn_begin_init(DB_env *const env, DB_txn *const parent, unsigned c
 				unsigned char buf[2] = { PFX_META, META_TXNID };
 				DB_val key = { sizeof(buf), buf };
 				DB_val val = { 0, NULL };
-				rc = db_get(txn->main, &key, &val);
+				rc = db_get(db_prefix_txn_raw(txn->main),
+					&key, &val);
 				if(DB_NOTFOUND == rc) rc = 0;
 				if(rc < 0) goto cleanup;
 				rc = fprintf(txn->log, "O:%u;", (unsigned)val.size);
@@ -601,14 +609,15 @@ cleanup:
 }
 DB_FN int db__cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len) {
 	if(!txn) return DB_EINVAL;
-	if(!txn->env->cmd->fn) return DB_EINVAL;
+/*	if(!txn->env->cmd->fn) return DB_EINVAL;
 
 	FILE *log = txn->log; txn->log = NULL;
 	int rc = txn->env->cmd->fn(txn->env->cmd->ctx, txn, buf, len); // TODO
 	assert(txn->isa); // Simple check that we weren't committed/aborted.
 	txn->log = log;
 //cleanup:
-	return rc;
+	return rc;*/
+	return DB_ENOTSUP; // TODO
 }
 
 DB_FN int db__countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out) {
@@ -619,13 +628,9 @@ DB_FN int db__delr(DB_txn *const txn, DB_range const *const range, uint64_t *con
 }
 
 DB_FN size_t db__cursor_size(DB_txn *const txn) {
-	DB_prefix_txn pfxtxn = {
-		.isa = db_base_prefix,
-		.txn = txn->main,
-	};
 	DB_wrbuf_txn wrbuftxn = {
 		.isa = db_base_wrbuf,
-		.main = (DB_txn *)&pfxtxn,
+		.main = txn->main,
 		.temp = txn->temp,
 	};
 	return sizeof(struct DB_cursor)+db_cursor_size((DB_txn *)&wrbuftxn);
@@ -634,15 +639,9 @@ DB_FN int db__cursor_init(DB_txn *const txn, DB_cursor *const cursor) {
 	if(!txn) return DB_EINVAL;
 	if(!cursor) return DB_EINVAL;
 	assert_zeroed(cursor, 1);
-	unsigned char buf[1] = { PFX_MAIN };
-	DB_prefix_txn pfxtxn = {
-		.isa = db_base_prefix,
-		.pfx = {{ sizeof(buf), buf }},
-		.txn = txn->main,
-	};
 	DB_wrbuf_txn wrbuftxn = {
 		.isa = db_base_wrbuf,
-		.main = (DB_txn *)&pfxtxn,
+		.main = txn->main,
 		.temp = txn->temp,
 	};
 	int rc = 0;
