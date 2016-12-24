@@ -7,7 +7,6 @@
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 // Equivalent to MDB constants.
 // More may be exposed here in the future.

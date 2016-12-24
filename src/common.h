@@ -6,6 +6,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define numberof(x) (sizeof(x) / sizeof(*(x)))
 
