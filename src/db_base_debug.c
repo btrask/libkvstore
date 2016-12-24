@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "db_base_internal.h"
 #include "common.h"
 
@@ -60,24 +61,27 @@ cleanup:
 	if(rc < 0) db_env_destroy(env);
 	return 0;
 }
-DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_get_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_LOG: *(DB_print_data *)data = *env->log; return 0;
-	case DB_CFG_INNERDB: *(DB_env **)data = env->env; return 0;
-	default:
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_LOG)) {
+		*(DB_print_data *)data = *env->log; return 0;
+	} else if(0 == strcmp(type, DB_CFG_INNERDB)) {
+		*(DB_env **)data = env->env; return 0;
+	} else {
 		return db_env_get_config(env->env, type, data);
 	}
 }
-DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_set_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_LOG: *env->log = *(DB_print_data *)data; return 0;
-	case DB_CFG_INNERDB:
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_LOG)) {
+		*env->log = *(DB_print_data *)data; return 0;
+	} else if(0 == strcmp(type, DB_CFG_INNERDB)) {
 		db_env_close(env->env);
 		env->env = data;
 		return 0;
-	default:
+	} else {
 		return db_env_set_config(env->env, type, data);
 	}
 }

@@ -49,17 +49,15 @@ cleanup:
 	if(rc < 0) db_env_destroy(env);
 	return 0;
 }
-DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_get_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	default: return db_env_get_config(ENV_INNER(env), type, data);
-	}
+	if(!type) return DB_EINVAL;
+	return db_env_get_config(ENV_INNER(env), type, data);
 }
-DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_set_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	default: return db_env_set_config(ENV_INNER(env), type, data);
-	}
+	if(!type) return DB_EINVAL;
+	return db_env_set_config(ENV_INNER(env), type, data);
 }
 DB_FN int db__env_open0(DB_env *const env) {
 	if(!env) return DB_EINVAL;

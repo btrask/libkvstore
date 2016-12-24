@@ -49,32 +49,42 @@ cleanup:
 	if(rc < 0) db_env_destroy(env);
 	return rc;
 }
-DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_get_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_FLAGS: *(unsigned *)data = env->flags; return 0;
-	case DB_CFG_FILENAME: *(char const **)data = env->path; return 0;
-	case DB_CFG_FILEMODE: *(int *)data = env->mode; return 0;
-	default: return DB_ENOTSUP;
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_FLAGS)) {
+		*(unsigned *)data = env->flags; return 0;
+	} else if(0 == strcmp(type, DB_CFG_FILENAME)) {
+		*(char const **)data = env->path; return 0;
+	} else if(0 == strcmp(type, DB_CFG_FILEMODE)) {
+		*(int *)data = env->mode; return 0;
+	} else {
+		return DB_ENOTSUP;
 	}
 }
-DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_set_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_MAPSIZE: {
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_MAPSIZE)) {
 		size_t *const sp = data;
 		return mdberr(lsmdb_env_set_mapsize(env->env, *sp));
-	} case DB_CFG_COMPARE: return DB_ENOTSUP;
-	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
-	case DB_CFG_TXNSIZE: return 0;
-	case DB_CFG_FLAGS: env->flags = *(unsigned *)data; return 0;
-	case DB_CFG_FILENAME:
+	} else if(0 == strcmp(type, DB_CFG_COMPARE)) {
+		return DB_ENOTSUP;
+	} else if(0 == strcmp(type, DB_CFG_COMMAND)) {
+		*env->cmd = *(DB_cmd_data *)data; return 0;
+	} else if(0 == strcmp(type, DB_CFG_TXNSIZE)) {
+		return 0;
+	} else if(0 == strcmp(type, DB_CFG_FLAGS)) {
+		env->flags = *(unsigned *)data; return 0;
+	} else if(0 == strcmp(type, DB_CFG_FILENAME)) {
 		free(env->path);
 		env->path = data ? strdup(data) : NULL;
 		if(data && !env->path) return DB_ENOMEM;
 		return 0;
-	case DB_CFG_FILEMODE: env->mode = *(int *)data; return 0;
-	default: return DB_ENOTSUP;
+	} else if(0 == strcmp(type, DB_CFG_FILEMODE)) {
+		env->mode = *(int *)data; return 0;
+	} else {
+		return DB_ENOTSUP;
 	}
 }
 DB_FN int db__env_open0(DB_env *const env) {

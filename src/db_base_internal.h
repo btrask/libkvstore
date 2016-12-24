@@ -64,8 +64,8 @@ struct DB_base {
 	// V0 methods
 	size_t (*env_size)(void);
 	int (*env_init)(DB_env *const env);
-	int (*env_get_config)(DB_env *const env, unsigned const type, void *data);
-	int (*env_set_config)(DB_env *const env, unsigned const type, void *data);
+	int (*env_get_config)(DB_env *const env, char const *const type, void *data);
+	int (*env_set_config)(DB_env *const env, char const *const type, void *data);
 	int (*env_open0)(DB_env *const env);
 	void (*env_destroy)(DB_env *const env);
 

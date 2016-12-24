@@ -102,23 +102,27 @@ typedef struct {
 	FILE *log;
 } DB_apply_data;
 
-#define DB_CFG_MAPSIZE 1 // size_t *data
-#define DB_CFG_COMPARE 2 // DB_cmp_data *data
-#define DB_CFG_COMMAND 3 // DB_cmd_data *data
-#define DB_CFG_TXNSIZE 4 // size_t *data
-#define DB_CFG_LOG 5 // DB_print_data *data
-#define DB_CFG_INNERDB 6 // DB_env *set (takes ownership) / DB_env **get
-#define DB_CFG_COMMIT 7 // DB_commit_data *data
-#define DB_CFG_APPLY 8 // DB_apply_data *data
-#define DB_CFG_TXNID 9 // DB_val *data
-#define DB_CFG_CONFLICTFREE 10 // int *data (as boolean)
-#define DB_CFG_KEYSIZE 11 // size_t *data (might be read-only)
-#define DB_CFG_FLAGS 12 // unsigned *data (DB_NOSYNC, DB_RDONLY)
-#define DB_CFG_FILENAME 13 // char const *set / char const **get
-#define DB_CFG_FILEMODE 14 // int *data (e.g. 0644)
-#define DB_CFG_LOCKFILE 15 // char const *set / char const **get
-#define DB_CFG_TEMPDB 16 // DB_env *set (takes ownership) / DB_env **get
-#define DB_CFG_PREFIX 17 // DB_val *data
+// Back-ends are free to define custom config options.
+// Please choose names carefully so that equivalent options are
+// likely to be reusable. If an option is highly back-end specific,
+// give it a more specific name.
+#define DB_CFG_MAPSIZE "mapsize" // size_t *data
+#define DB_CFG_COMPARE "compare" // DB_cmp_data *data
+#define DB_CFG_COMMAND "command" // DB_cmd_data *data
+#define DB_CFG_TXNSIZE "txnsize" // size_t *data
+#define DB_CFG_LOG "log" // DB_print_data *data
+#define DB_CFG_INNERDB "innerdb" // DB_env *set (takes ownership) / DB_env **get
+#define DB_CFG_COMMITHOOK "commithook" // DB_commit_data *data
+#define DB_CFG_COMMITAPPLY "commitapply" // DB_apply_data *data
+#define DB_CFG_TXNID "txnid" // DB_val *data
+#define DB_CFG_CONFLICTFREE "conflictfree" // int *data (as boolean)
+#define DB_CFG_KEYSIZE "keysize" // size_t *data (might be read-only)
+#define DB_CFG_FLAGS "flags" // unsigned *data (DB_NOSYNC, DB_RDONLY)
+#define DB_CFG_FILENAME "filename" // char const *set / char const **get
+#define DB_CFG_FILEMODE "filemode" // int *data (e.g. 0644)
+#define DB_CFG_LOCKFILE "lockfile" // char const *set / char const **get
+#define DB_CFG_TEMPDB "tempdb" // DB_env *set (takes ownership) / DB_env **get
+#define DB_CFG_PREFIX "prefix" // DB_val *data
 
 DB_base const *db_base_find(char const *const name);
 
@@ -130,8 +134,8 @@ int db_env_create_custom(DB_base const *const base, DB_env **const out);
 size_t db_env_size(DB_base const *const base);
 int db_env_init(DB_env *const env);
 int db_env_create(DB_env **const out); // Convenience
-int db_env_get_config(DB_env *const env, unsigned const type, void *data);
-int db_env_set_config(DB_env *const env, unsigned const type, void *data);
+int db_env_get_config(DB_env *const env, char const *const type, void *data);
+int db_env_set_config(DB_env *const env, char const *const type, void *data);
 int db_env_open0(DB_env *const env);
 int db_env_open(DB_env *const env, char const *const name, unsigned const flags, int const mode); // Convenience
 DB_base const *db_env_base(DB_env *const env);

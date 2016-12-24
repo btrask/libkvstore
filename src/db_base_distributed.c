@@ -245,7 +245,7 @@ static int default_commit(void *ctx, DB_env *const env, FILE *const log) {
 		.txn_id = {{ 0, NULL }},
 		.log = log,
 	};
-	return db_env_set_config(env, DB_CFG_APPLY, &data);
+	return db_env_set_config(env, DB_CFG_COMMITAPPLY, &data);
 }
 
 
@@ -279,12 +279,14 @@ cleanup:
 	if(rc < 0) db_env_destroy(env);
 	return rc;
 }
-DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_get_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_COMMIT: *(DB_commit_data *)data = *env->commit; return 0;
-	case DB_CFG_APPLY: return DB_EINVAL;
-	case DB_CFG_TXNID: {
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_COMMITHOOK)) {
+		*(DB_commit_data *)data = *env->commit; return 0;
+	} else if(0 == strcmp(type, DB_CFG_COMMITAPPLY)) {
+		return DB_EINVAL;
+	} else if(0 == strcmp(type, DB_CFG_TXNID)) {
 		unsigned char buf[2] = { PFX_META, META_TXNID };
 		DB_val key = { sizeof(buf), buf };
 		DB_txn *txn = NULL;
@@ -294,18 +296,24 @@ DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data)
 		rc = db_get(txn, &key, data);
 		db_txn_abort(txn);
 		return rc;
-	} case DB_CFG_CONFLICTFREE: *(int *)data = env->conflict_free; return 0;
-	case DB_CFG_PREFIX: return DB_ENOTSUP;
-	default: return db_env_get_config(env->sub, type, data);
+	} else if(0 == strcmp(type, DB_CFG_CONFLICTFREE)) {
+		*(int *)data = env->conflict_free; return 0;
+	} else if(0 == strcmp(type, DB_CFG_PREFIX)) {
+		return DB_ENOTSUP;
+	} else {
+		return db_env_get_config(env->sub, type, data);
 	}
 }
-DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_set_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_TXNSIZE: return DB_ENOTSUP; // TODO
-	case DB_CFG_COMMIT: *env->commit = *(DB_commit_data *)data; return 0;
-	case DB_CFG_APPLY: return apply_internal(env, data);
-	case DB_CFG_TXNID: {
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_TXNSIZE)) {
+		return DB_ENOTSUP; // TODO
+	} else if(0 == strcmp(type, DB_CFG_COMMITHOOK)) {
+		*env->commit = *(DB_commit_data *)data; return 0;
+	} else if(0 == strcmp(type, DB_CFG_COMMITAPPLY)) {
+		return apply_internal(env, data);
+	} else if(0 == strcmp(type, DB_CFG_TXNID)) {
 		unsigned char buf[2] = { PFX_META, META_TXNID };
 		DB_val key = { sizeof(buf), buf };
 		DB_val val = *(DB_val *)data;
@@ -316,9 +324,12 @@ DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data)
 		rc = db_put(txn, &key, &val, 0);
 		if(rc < 0) { db_txn_abort(txn); return rc; }
 		return db_txn_commit(txn);
-	} case DB_CFG_CONFLICTFREE: env->conflict_free = *(int *)data; return 0;
-	case DB_CFG_PREFIX: return DB_ENOTSUP;
-	default: return db_env_set_config(env->sub, type, data);
+	} else if(0 == strcmp(type, DB_CFG_CONFLICTFREE)) {
+		env->conflict_free = *(int *)data; return 0;
+	} else if(0 == strcmp(type, DB_CFG_PREFIX)) {
+		return DB_ENOTSUP;
+	} else {
+		return db_env_set_config(env->sub, type, data);
 	}
 }
 DB_FN int db__env_open0(DB_env *const env) {

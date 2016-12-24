@@ -330,34 +330,45 @@ DB_FN int db__env_init(DB_env *const env) {
 
 	return 0;
 }
-DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_get_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_COMMAND: *(DB_cmd_data *)data = *env->cmd; return 0;
-	case DB_CFG_KEYSIZE: return db_env_get_config(env->tmpenv, type, data);
-	case DB_CFG_TXNSIZE: return db_env_get_config(env->tmpenv, DB_CFG_MAPSIZE, data);
-	case DB_CFG_FLAGS: *(unsigned *)data = env->flags; return 0;
-	case DB_CFG_FILENAME: *(char const **)data = env->path; return 0;
-	default: return DB_ENOTSUP;
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_COMMAND)) {
+		*(DB_cmd_data *)data = *env->cmd; return 0;
+	} else if(0 == strcmp(type, DB_CFG_KEYSIZE)) {
+		return db_env_get_config(env->tmpenv, type, data);
+	} else if(0 == strcmp(type, DB_CFG_TXNSIZE)) {
+		return db_env_get_config(env->tmpenv, DB_CFG_MAPSIZE, data);
+	} else if(0 == strcmp(type, DB_CFG_FLAGS)) {
+		*(unsigned *)data = env->flags; return 0;
+	} else if(0 == strcmp(type, DB_CFG_FILENAME)) {
+		*(char const **)data = env->path; return 0;
+	} else {
+		return DB_ENOTSUP;
 	}
 }
-DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_set_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_MAPSIZE: return 0;
-	case DB_CFG_COMPARE: return DB_ENOTSUP; //*env->cmp = *(DB_cmp_data *)data; return 0;
-	case DB_CFG_COMMAND: *env->cmd = *(DB_cmd_data *)data; return 0;
-	case DB_CFG_TXNSIZE: return db_env_set_config(env->tmpenv, DB_CFG_MAPSIZE, data);
-	case DB_CFG_FLAGS:
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_MAPSIZE)) {
+		return 0;
+	} else if(0 == strcmp(type, DB_CFG_COMPARE)) {
+		return DB_ENOTSUP; //*env->cmp = *(DB_cmp_data *)data; return 0;
+	} else if(0 == strcmp(type, DB_CFG_COMMAND)) {
+		*env->cmd = *(DB_cmd_data *)data; return 0;
+	} else if(0 == strcmp(type, DB_CFG_TXNSIZE)) {
+		return db_env_set_config(env->tmpenv, DB_CFG_MAPSIZE, data);
+	} else if(0 == strcmp(type, DB_CFG_FLAGS)) {
 		env->flags = DB_NOSYNC & *(unsigned *)data;
 		leveldb_writeoptions_set_sync(env->wopts, !(DB_NOSYNC & env->flags));
 		return 0;
-	case DB_CFG_FILENAME:
+	} else if(0 == strcmp(type, DB_CFG_FILENAME)) {
 		free(env->path);
 		env->path = data ? strdup(data) : NULL;
 		if(data && !env->path) return DB_ENOMEM;
 		return 0;
-	default: return DB_ENOTSUP;
+	} else {
+		return DB_ENOTSUP;
 	}
 }
 DB_FN int db__env_open0(DB_env *const env) {

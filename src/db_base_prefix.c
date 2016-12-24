@@ -126,32 +126,37 @@ DB_FN int db__env_init(DB_env *const env) {
 	env->isa = db_base_prefix;
 	return 0;
 }
-DB_FN int db__env_get_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_get_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_INNERDB: *(DB_env **)data = env->sub; return 0;
-	case DB_CFG_KEYSIZE: {
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_INNERDB)) {
+		*(DB_env **)data = env->sub; return 0;
+	} else if(0 == strcmp(type, DB_CFG_KEYSIZE)) {
 		int rc = db_env_get_config(env->sub, DB_CFG_KEYSIZE, data);
 		if(rc < 0) return rc;
 		if(*(size_t *)data <= env->keyspace->min->size) return DB_PANIC;
 		*(size_t *)data -= env->keyspace->min->size;
 		return 0;
-	} case DB_CFG_PREFIX: *(DB_val *)data = *env->keyspace->min; return 0;
-	default: return db_env_get_config(env->sub, type, data);
+	} else if(0 == strcmp(type, DB_CFG_PREFIX)) {
+		*(DB_val *)data = *env->keyspace->min; return 0;
+	} else {
+		return db_env_get_config(env->sub, type, data);
 	}
 }
-DB_FN int db__env_set_config(DB_env *const env, unsigned const type, void *data) {
+DB_FN int db__env_set_config(DB_env *const env, char const *const type, void *data) {
 	if(!env) return DB_EINVAL;
-	switch(type) {
-	case DB_CFG_INNERDB:
+	if(!type) return DB_EINVAL;
+	if(0 == strcmp(type, DB_CFG_INNERDB)) {
 		db_env_close(env->sub);
 		env->sub = data;
 		return 0;
-	case DB_CFG_KEYSIZE: {
+	} else if(0 == strcmp(type, DB_CFG_KEYSIZE)) {
 		size_t max = *(size_t *)data + env->keyspace->min->size;
 		return db_env_set_config(env, DB_CFG_KEYSIZE, &max);
-	} case DB_CFG_PREFIX: return keyspace(env->keyspace, data);
-	default: return db_env_set_config(env->sub, type, data);
+	} else if(0 == strcmp(type, DB_CFG_PREFIX)) {
+		return keyspace(env->keyspace, data);
+	} else {
+		return db_env_set_config(env->sub, type, data);
 	}
 }
 DB_FN int db__env_open0(DB_env *const env) {
