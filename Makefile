@@ -179,7 +179,7 @@ $(INCLUDE_DIR)/kvstore/%.h: $(SRC_DIR)/%.h
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -rf ./testdb ./testdb-lock
+	rm -rf ./testdb ./testdb-lock ./testdb-log
 
 .PHONY: distclean
 distclean: clean
