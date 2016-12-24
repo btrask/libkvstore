@@ -27,7 +27,7 @@ CFLAGS += -fstack-protector
 CFLAGS += -fPIC
 CFLAGS += -I$(DEPS_DIR)
 CFLAGS += -I$(INCLUDE_DIR)
-CFLAGS += -DDB_DYNAMIC
+CFLAGS += -DKVS_DYNAMIC
 
 WARNINGS := -Werror -Wall -Wextra -Wunused -Wuninitialized -Wvla
 
@@ -83,30 +83,30 @@ STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
 
 
 ifeq ($(DB),rocksdb)
-  CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
+  CFLAGS += -DKVS_BASE_DEFAULT=kvs_base_leveldb
 else ifeq ($(DB),hyper)
-  CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
+  CFLAGS += -DKVS_BASE_DEFAULT=kvs_base_leveldb
 else ifeq ($(DB),leveldb)
-  CFLAGS += -DDB_BASE_DEFAULT=db_base_leveldb
+  CFLAGS += -DKVS_BASE_DEFAULT=kvs_base_leveldb
 else ifeq ($(DB),debug)
-  CFLAGS += -DDB_BASE_DEFAULT=db_base_debug
+  CFLAGS += -DKVS_BASE_DEFAULT=kvs_base_debug
 else ifeq ($(DB),distributed)
-  CFLAGS += -DDB_BASE_DEFAULT=db_base_distributed
+  CFLAGS += -DKVS_BASE_DEFAULT=kvs_base_distributed
 else ifeq ($(DB),mdb)
-  CFLAGS += -DDB_BASE_DEFAULT=db_base_mdb
+  CFLAGS += -DKVS_BASE_DEFAULT=kvs_base_mdb
 else ifndef DB
-  CFLAGS += -DDB_BASE_DEFAULT=db_base_mdb
+  CFLAGS += -DKVS_BASE_DEFAULT=kvs_base_mdb
 else
   $(error Unknown back-end $(DB))
 endif
 
 ifeq ($(USE_MDB),1)
-  CFLAGS += -DDB_BASE_MDB
+  CFLAGS += -DKVS_BASE_MDB
   OBJECTS += $(BUILD_DIR)/src/db_base_mdb.o
 endif
 
 ifeq ($(USE_LEVELDB),1)
-  CFLAGS += -DDB_BASE_LEVELDB
+  CFLAGS += -DKVS_BASE_LEVELDB
   CFLAGS += -I$(DEPS_DIR)/leveldb/include -I$(DEPS_DIR)/snappy/include
   SHARED_LIBS += $(DEPS_DIR)/leveldb/out-shared/libleveldb.so $(DEPS_DIR)/snappy/.libs/libsnappy.so
   STATIC_LIBS += $(DEPS_DIR)/leveldb/out-static/libleveldb.a $(DEPS_DIR)/snappy/.libs/libsnappy.a
@@ -115,7 +115,7 @@ ifeq ($(USE_LEVELDB),1)
 endif
 
 ifeq ($(USE_ROCKSDB),1)
-  CFLAGS += -DDB_BASE_ROCKSDB
+  CFLAGS += -DKVS_BASE_ROCKSDB
   SHARED_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.so
   STATIC_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.a
   LIBS += -lrocksdb
@@ -125,7 +125,7 @@ ifeq ($(USE_ROCKSDB),1)
 endif
 
 ifeq ($(USE_HYPER),1)
-  CFLAGS += -DDB_BASE_HYPER
+  CFLAGS += -DKVS_BASE_HYPER
   SHARED_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.so
   STATIC_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.a
   LIBS += -lhyperleveldb
@@ -134,17 +134,17 @@ ifeq ($(USE_HYPER),1)
 endif
 
 ifeq ($(USE_DEBUG),1)
-  CFLAGS += -DDB_BASE_DEBUG
+  CFLAGS += -DKVS_BASE_DEBUG
   OBJECTS += $(BUILD_DIR)/src/db_base_debug.o
 endif
 
 ifeq ($(USE_DISTRIBUTED),1)
-  CFLAGS += -DDB_BASE_DISTRIBUTED
+  CFLAGS += -DKVS_BASE_DISTRIBUTED
   OBJECTS += $(BUILD_DIR)/src/db_base_distributed.o
 endif
 
 ifeq ($(USE_DUMMY),1)
-  CFLAGS += -DDB_BASE_DUMMY
+  CFLAGS += -DKVS_BASE_DUMMY
   OBJECTS += $(BUILD_DIR)/src/db_base_dummy.o
 endif
 
