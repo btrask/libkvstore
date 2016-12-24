@@ -1,11 +1,11 @@
 // Copyright 2014-2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
-#ifndef KVSTORE_DB_SCHEMA_H
-#define KVSTORE_DB_SCHEMA_H
+#ifndef KVSTORE_KVS_SCHEMA_H
+#define KVSTORE_KVS_SCHEMA_H
 
 #include <stdint.h>
-#include "db_base.h"
+#include "kvs_base.h"
 
 #ifndef NDEBUG
 #define kvs_assert(x) assert(x)

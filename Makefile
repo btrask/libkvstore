@@ -72,11 +72,11 @@ SHARED_LIBS :=
 STATIC_LIBS :=
 LIBS := -lpthread
 OBJECTS := \
-	$(BUILD_DIR)/src/db_base_dynamic.o \
-	$(BUILD_DIR)/src/db_helper.o \
-	$(BUILD_DIR)/src/db_wrbuf.o \
-	$(BUILD_DIR)/src/db_base_prefix.o \
-	$(BUILD_DIR)/src/db_schema.o
+	$(BUILD_DIR)/src/kvs_base_dynamic.o \
+	$(BUILD_DIR)/src/kvs_helper.o \
+	$(BUILD_DIR)/src/kvs_wrbuf.o \
+	$(BUILD_DIR)/src/kvs_base_prefix.o \
+	$(BUILD_DIR)/src/kvs_schema.o
 
 SHARED_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.so
 STATIC_LIBS += $(DEPS_DIR)/liblmdb/liblmdb.a
@@ -102,7 +102,7 @@ endif
 
 ifeq ($(USE_MDB),1)
   CFLAGS += -DKVS_BASE_MDB
-  OBJECTS += $(BUILD_DIR)/src/db_base_mdb.o
+  OBJECTS += $(BUILD_DIR)/src/kvs_base_mdb.o
 endif
 
 ifeq ($(USE_LEVELDB),1)
@@ -111,7 +111,7 @@ ifeq ($(USE_LEVELDB),1)
   SHARED_LIBS += $(DEPS_DIR)/leveldb/out-shared/libleveldb.so $(DEPS_DIR)/snappy/.libs/libsnappy.so
   STATIC_LIBS += $(DEPS_DIR)/leveldb/out-static/libleveldb.a $(DEPS_DIR)/snappy/.libs/libsnappy.a
   LIBS += -lstdc++
-  OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+  OBJECTS += $(BUILD_DIR)/src/kvs_base_leveldb.o
 endif
 
 ifeq ($(USE_ROCKSDB),1)
@@ -121,7 +121,7 @@ ifeq ($(USE_ROCKSDB),1)
   LIBS += -lrocksdb
   LIBS += -lz
   LIBS += -lstdc++
-  OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+  OBJECTS += $(BUILD_DIR)/src/kvs_base_leveldb.o
 endif
 
 ifeq ($(USE_HYPER),1)
@@ -130,28 +130,28 @@ ifeq ($(USE_HYPER),1)
   STATIC_LIBS += $(DEPS_DIR)/snappy/.libs/libsnappy.a
   LIBS += -lhyperleveldb
   LIBS += -lstdc++
-  OBJECTS += $(BUILD_DIR)/src/db_base_leveldb.o
+  OBJECTS += $(BUILD_DIR)/src/kvs_base_leveldb.o
 endif
 
 ifeq ($(USE_DEBUG),1)
   CFLAGS += -DKVS_BASE_DEBUG
-  OBJECTS += $(BUILD_DIR)/src/db_base_debug.o
+  OBJECTS += $(BUILD_DIR)/src/kvs_base_debug.o
 endif
 
 ifeq ($(USE_DISTRIBUTED),1)
   CFLAGS += -DKVS_BASE_DISTRIBUTED
-  OBJECTS += $(BUILD_DIR)/src/db_base_distributed.o
+  OBJECTS += $(BUILD_DIR)/src/kvs_base_distributed.o
 endif
 
 ifeq ($(USE_DUMMY),1)
   CFLAGS += -DKVS_BASE_DUMMY
-  OBJECTS += $(BUILD_DIR)/src/db_base_dummy.o
+  OBJECTS += $(BUILD_DIR)/src/kvs_base_dummy.o
 endif
 
 HEADERS := \
-	$(INCLUDE_DIR)/kvstore/db_base.h \
-	$(INCLUDE_DIR)/kvstore/db_base_internal.h \
-	$(INCLUDE_DIR)/kvstore/db_schema.h
+	$(INCLUDE_DIR)/kvstore/kvs_base.h \
+	$(INCLUDE_DIR)/kvstore/kvs_base_custom.h \
+	$(INCLUDE_DIR)/kvstore/kvs_schema.h
 
 .PHONY: all
 all: $(BUILD_DIR)/libkvstore.so $(BUILD_DIR)/libkvstore.a $(HEADERS)
@@ -212,7 +212,7 @@ $(DESTDIR)$(PREFIX)/lib/%: $(BUILD_DIR)/%
 	cp $^ $@
 
 .PHONY: install
-install: $(DESTDIR)$(PREFIX)/include/kvstore/db_base.h $(DESTDIR)$(PREFIX)/include/kvstore/db_base_internal.h $(DESTDIR)$(PREFIX)/include/kvstore/db_schema.h $(DESTDIR)$(PREFIX)/lib/libkvstore.so $(DESTDIR)$(PREFIX)/lib/libkvstore.a
+install: $(DESTDIR)$(PREFIX)/include/kvstore/kvs_base.h $(DESTDIR)$(PREFIX)/include/kvstore/kvs_base_custom.h $(DESTDIR)$(PREFIX)/include/kvstore/kvs_schema.h $(DESTDIR)$(PREFIX)/lib/libkvstore.so $(DESTDIR)$(PREFIX)/lib/libkvstore.a
 
 .PHONY: uninstall
 uninstall:

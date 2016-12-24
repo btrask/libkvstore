@@ -5,5 +5,5 @@
 // A second, more "native" back-end might be added in the future.
 
 #define LEVELDB_AS_ROCKSDB
-#include "db_base_leveldb.c"
+#include "kvs_base_leveldb.c"
 

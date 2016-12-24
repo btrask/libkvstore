@@ -1,10 +1,10 @@
 // Copyright 2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
-#ifndef KVSTORE_DB_BASE_INTERNAL_H
-#define KVSTORE_DB_BASE_INTERNAL_H
+#ifndef KVSTORE_KVS_BASE_INTERNAL_H
+#define KVSTORE_KVS_BASE_INTERNAL_H
 
-#include "db_base.h"
+#include "kvs_base.h"
 
 #define KVS_FN static
 #define KVS_BASE_V0(_name) \

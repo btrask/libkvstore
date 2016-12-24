@@ -2,7 +2,7 @@
 // MIT licensed (see LICENSE for details)
 
 #include <assert.h>
-#include "db_base_internal.h"
+#include "kvs_base_custom.h"
 
 // A write buffer is a pseudo-cursor that wraps two regular cursors that
 // buffers writes and deletions from the main cursor to the temp cursor.

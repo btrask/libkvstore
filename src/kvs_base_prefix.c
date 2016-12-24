@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
-#include "db_base_internal.h"
+#include "kvs_base_custom.h"
 #include "common.h"
 
 struct KVS_env {

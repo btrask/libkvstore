@@ -1,8 +1,8 @@
 // Copyright 2014-2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
-#ifndef KVSTORE_DB_BASE_H
-#define KVSTORE_DB_BASE_H
+#ifndef KVSTORE_KVS_BASE_H
+#define KVSTORE_KVS_BASE_H
 
 #include <errno.h>
 #include <stdint.h>

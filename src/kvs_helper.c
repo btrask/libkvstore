@@ -3,7 +3,7 @@
 
 #include <assert.h>
 #include <stdio.h>
-#include "db_base_internal.h"
+#include "kvs_base_custom.h"
 
 int kvs_helper_get(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data) {
 	KVS_cursor *cursor;

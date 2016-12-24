@@ -11,7 +11,7 @@
 #include <sys/types.h>
 
 #include "liblmdb/lmdb.h"
-#include "db_base_internal.h"
+#include "kvs_base_custom.h"
 #include "common.h"
 
 #define KVS_PATH_MAX (1023+1)

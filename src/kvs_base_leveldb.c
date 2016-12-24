@@ -15,8 +15,8 @@
 #endif
 
 #include "liblmdb/lmdb.h"
-#include "db_base_internal.h"
-#include "db_wrbuf.h"
+#include "kvs_base_custom.h"
+#include "kvs_wrbuf.h"
 #include "common.h"
 
 struct KVS_env {

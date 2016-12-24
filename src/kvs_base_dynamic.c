@@ -3,7 +3,7 @@
 
 #include <assert.h>
 #include <string.h>
-#include "db_base_internal.h"
+#include "kvs_base_custom.h"
 
 KVS_base const *const kvs_base_default = (KVS_BASE_DEFAULT);
 
