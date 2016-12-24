@@ -12,7 +12,6 @@
 
 #include "liblmdb/lmdb.h"
 #include "db_base_internal.h"
-#include "db_base_prefix.h"
 #include "common.h"
 
 #define DB_PATH_MAX (1023+1)

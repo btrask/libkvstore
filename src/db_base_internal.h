@@ -117,21 +117,25 @@ extern DB_base const db_base_debug[1];
 extern DB_base const db_base_distributed[1];
 extern DB_base const db_base_dummy[1];
 
+// A prefix cursor wraps a normal cursor, transparently prefixing all keys
+// written to the underlying data store, and stripping all prefixes read
+// from it.
+extern DB_base const db_base_prefix[1];
+DB_env *db_prefix_env_raw(DB_env *const env);
+DB_txn *db_prefix_txn_raw(DB_txn *const txn);
+DB_cursor *db_prefix_cursor_raw(DB_cursor *cursor);
+
 // Helper functions
 // Use these to get a simple implementation in terms of other operations.
-
 int db_helper_get(DB_txn *const txn, DB_val const *const key, DB_val *const data);
 int db_helper_put(DB_txn *const txn, DB_val const *const key, DB_val *const data, unsigned const flags);
 int db_helper_del(DB_txn *const txn, DB_val const *const key, unsigned const flags); // For write-optimized back-ends, implement db_del and use the helper for db_cursor_del.
 int db_helper_cmd(DB_txn *const txn, unsigned char const *const buf, size_t const len);
-
 int db_helper_countr(DB_txn *const txn, DB_range const *const range, uint64_t *const out); // Very slow.
 int db_helper_delr(DB_txn *const txn, DB_range const *const range, uint64_t *const out); // Very slow and can bloat transactions.
-
 int db_helper_cursor_seekr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 int db_helper_cursor_firstr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
 int db_helper_cursor_nextr(DB_cursor *const cursor, DB_range const *const range, DB_val *const key, DB_val *const data, int const dir);
-
 int db_helper_cursor_del(DB_cursor *const cursor, unsigned const flags);
 
 #endif
