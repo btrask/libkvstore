@@ -116,6 +116,7 @@ extern KVS_base const kvs_base_lsmdb[1];
 extern KVS_base const kvs_base_debug[1];
 extern KVS_base const kvs_base_distributed[1];
 extern KVS_base const kvs_base_dummy[1];
+extern KVS_base const kvs_base_raft[1];
 
 // A prefix cursor wraps a normal cursor, transparently prefixing all keys
 // written to the underlying data store, and stripping all prefixes read

@@ -8,6 +8,7 @@ USE_HYPER ?= 0
 USE_DEBUG ?= 1
 USE_DISTRIBUTED ?= 1
 USE_DUMMY ?= 1
+USE_RAFT ?= 1
 
 DESTDIR ?=
 PREFIX ?= /usr/local
@@ -146,6 +147,12 @@ endif
 ifeq ($(USE_DUMMY),1)
   CFLAGS += -DKVS_BASE_DUMMY
   OBJECTS += $(BUILD_DIR)/src/kvs_base_dummy.o
+endif
+
+ifeq ($(USE_RAFT),1)
+  CFLAGS += -DKVS_BASE_RAFT
+  LIBS += lcraft
+  OBJECTS += $(BUILD_DIR)/src/kvs_base_raft.o
 endif
 
 HEADERS := \
