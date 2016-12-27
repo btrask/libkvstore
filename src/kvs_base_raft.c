@@ -11,6 +11,14 @@
 #include "kvs_base_custom.h"
 #include "common.h"
 
+enum {
+	PFX_META = 'R',
+};
+enum {
+	META_VOTED = 'V',
+	META_TERM = 'T',
+};
+
 struct KVS_env {
 	KVS_base const *isa;
 	pthread_mutex_t mutex[1];
@@ -38,6 +46,45 @@ struct KVS_cursor {
 static int err(int x) {
 	if(x < 0) return -errno;
 	return x;
+}
+static int initialize(KVS_env *const env) {
+	assert(env);
+	KVS_env *const env = user_data;
+	KSV_env *raw = NULL;
+	KVS_txn *txn = NULL;
+	int rc = ksv_env_get_config(env, KSV_CFG_INNERDB, &raw);
+	if(rc < 0) goto cleanup;
+	rc = kvs_txn_begin(raw, NULL, DB_RDONLY, &txn);
+	if(rc < 0) goto cleanup;
+
+
+	for(;;) {
+		raft_entry_t entry = {
+		
+		};
+		raft_append_entry(env->raft, &entry);
+	}
+
+	raft_vote_for_nodeid(env->raft, 0); // TODO
+	raft_set_current_term(env->raft, 0); // TODO
+
+/*	unsigned char k[2] = { PFX_META, META_VOTED };
+	unsigned char v[4];
+	v[3] = (node >>  0) & 0xff;
+	v[2] = (node >>  8) & 0xff;
+	v[1] = (node >> 16) & 0xff;
+	v[0] = (node >> 24) & 0xff;
+	KVS_val key = { sizeof(k), k };
+	KVS_val val = { sizeof(v), v };
+	rc = kvs_put(txn, &key, &val, 0);
+	if(rc < 0) goto cleanup;*/
+
+	rc = kvs_txn_commit(txn); txn = NULL;
+	if(rc < 0) goto cleanup;
+cleanup:
+	kvs_txn_abort(txn); txn = NULL;
+	raw = NULL;
+	return rc;
 }
 static int commithook(void *ctx, KVS_env *const env, FILE *const log) {
 	bool locked = false;
@@ -143,7 +190,30 @@ static int applylog(raft_server_t *raft, void *user_data, raft_entry_t *entry, i
 
 static int persist_vote(raft_server_t *raft, void *user_data, int node) {
 	KVS_env *const env = user_data;
-	UNUSED(env); // TODO
+	KSV_env *raw = NULL;
+	KVS_txn *txn = NULL;
+	int rc = ksv_env_get_config(env, KSV_CFG_INNERDB, &raw);
+	if(rc < 0) goto cleanup;
+	rc = kvs_txn_begin(raw, NULL, DB_RDWR, &txn);
+	if(rc < 0) goto cleanup;
+
+	unsigned char k[2] = { PFX_META, META_VOTED };
+	unsigned char v[4];
+	v[3] = (node >>  0) & 0xff;
+	v[2] = (node >>  8) & 0xff;
+	v[1] = (node >> 16) & 0xff;
+	v[0] = (node >> 24) & 0xff;
+	KVS_val key = { sizeof(k), k };
+	KVS_val val = { sizeof(v), v };
+	rc = kvs_put(txn, &key, &val, 0);
+	if(rc < 0) goto cleanup;
+
+	rc = kvs_txn_commit(txn); txn = NULL;
+	if(rc < 0) goto cleanup;
+cleanup:
+	kvs_txn_abort(txn); txn = NULL;
+	raw = NULL;
+	if(rc < 0) return RAFT_ERR_SHUTDOWN;
 	return 0;
 }
 static int persist_term(raft_server_t *raft, void *user_data, int node) {
@@ -187,9 +257,12 @@ KVS_FN int kvs__env_init(KVS_env *const env) {
 		.persist_vote = persist_vote,
 		.persist_term = persist_term,
 		.log_offer = log_offer,
+		.log_pop = log_pop,
 		.node_has_sufficient_logs = node_has_sufficient_logs,
 	};
 	raft_set_callbacks(env->raft, &cbs, env);
+	rc = initialize(env);
+	if(rc < 0) goto cleanup;
 
 	rc = kvs_env_init_custom(kvs_base_distributed, ENV_INNER(env));
 	if(rc < 0) goto cleanup;
