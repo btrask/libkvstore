@@ -116,13 +116,10 @@ extern KVS_base const kvs_base_distributed[1];
 extern KVS_base const kvs_base_dummy[1];
 extern KVS_base const kvs_base_raft[1];
 
-// A prefix cursor wraps a normal cursor, transparently prefixing all keys
+// A prefix txn wraps a normal txn, transparently prefixing all keys
 // written to the underlying data store, and stripping all prefixes read
 // from it.
 extern KVS_base const kvs_base_prefix[1];
-KVS_env *kvs_prefix_env_raw(KVS_env *const env);
-KVS_txn *kvs_prefix_txn_raw(KVS_txn *const txn);
-KVS_cursor *kvs_prefix_cursor_raw(KVS_cursor *cursor);
 
 #endif
 

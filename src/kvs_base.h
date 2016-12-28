@@ -121,16 +121,15 @@ typedef struct {
 #define KVS_ENV_FILEMODE "filemode" // int *data (e.g. 0644)
 #define KVS_ENV_LOCKFILE "lockfile" // char const *set / char const **get
 #define KVS_ENV_TEMPDB "tempdb" // KVS_env *set (takes ownership) / KVS_env **get
-#define KVS_ENV_PREFIX "prefix" // KVS_val *data
 
 #define KVS_TXN_ENV "env" // KVS_env *set (non-owning) / KVS_env **get
 #define KVS_TXN_PARENT "parent" // KVS_txn *set (non-owning) / KVS_txn **get
 #define KVS_TXN_CHILD "child" // KVS_txn *set (owning) / KVS_txn **get
 #define KVS_TXN_FLAGS "flags" // unsigned *data
-#define KVS_TXN_INNERTXN "innertxn" // KVS_txn *set (owning) / KVS_txn **get
+#define KVS_TXN_CURSOR "cursor" // KVS_cursor *set (owning) / KVS_cursor **get
+#define KVS_TXN_WRAPPEDTXN "wrappedtxn" // KVS_txn *set (non-owning) / KVS_txn **get
 #define KVS_TXN_LOCALTXN "localtxn" // KVS_txn *set (owning) / KVS_txn **get
 #define KVS_TXN_PREFIX "prefix" // KVS_val *data
-#define KVS_TXN_CURSOR "cursor" // KVS_cursor *set (owning) / KVS_cursor **get
 
 KVS_base const *kvs_base_find(char const *const name);
 
