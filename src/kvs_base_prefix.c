@@ -277,6 +277,9 @@ KVS_FN int kvs__cursor_next(KVS_cursor *const cursor, KVS_val *const key, KVS_va
 	return rc;
 }
 
+// TODO: We should be able to use KVS_HELPER_CURSOR_RANGE_FUNCS here.
+// However, an initial attempt produced incorrect results,
+// which may indicate a bug.
 KVS_FN int kvs__cursor_seekr(KVS_cursor *const cursor, KVS_range const *const range, KVS_val *const key, KVS_val *const data, int const dir) {
 	if(!cursor) return KVS_EINVAL;
 	if(!range_ok(cursor, range)) return KVS_BAD_VALSIZE;
