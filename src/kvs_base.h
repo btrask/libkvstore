@@ -130,7 +130,7 @@ typedef struct {
 #define KVS_TXN_INNERTXN "innertxn" // KVS_txn *set (owning) / KVS_txn **get
 #define KVS_TXN_LOCALTXN "localtxn" // KVS_txn *set (owning) / KVS_txn **get
 #define KVS_TXN_PREFIX "prefix" // KVS_val *data
-#define KVS_TXN_CURSOR "cursor"
+#define KVS_TXN_CURSOR "cursor" // KVS_cursor *set (owning) / KVS_cursor **get
 
 KVS_base const *kvs_base_find(char const *const name);
 
