@@ -34,5 +34,16 @@ int kvs_helper_cursor_firstr(KVS_cursor *const cursor, KVS_range const *const ra
 int kvs_helper_cursor_nextr(KVS_cursor *const cursor, KVS_range const *const range, KVS_val *const key, KVS_val *const data, int const dir);
 int kvs_helper_cursor_del(KVS_cursor *const cursor, unsigned const flags);
 
+#define KVS_HELPER_CURSOR_RANGE_FUNCS(pfx) \
+KVS_FN int pfx##cursor_seekr(KVS_cursor *const cursor, KVS_range const *const range, KVS_val *const key, KVS_val *const data, int const dir) { \
+	return kvs_helper_cursor_seekr(cursor, range, key, data, dir); \
+} \
+KVS_FN int pfx##cursor_firstr(KVS_cursor *const cursor, KVS_range const *const range, KVS_val *const key, KVS_val *const data, int const dir) { \
+	return kvs_helper_cursor_firstr(cursor, range, key, data, dir); \
+} \
+KVS_FN int pfx##cursor_nextr(KVS_cursor *const cursor, KVS_range const *const range, KVS_val *const key, KVS_val *const data, int const dir) { \
+	return kvs_helper_cursor_nextr(cursor, range, key, data, dir); \
+}
+
 #endif
 
