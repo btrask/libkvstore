@@ -301,7 +301,7 @@ KVS_FN int kvs__cursor_next(KVS_cursor *const cursor, KVS_val *const key, KVS_va
 	return mdberr(mdb_cursor_get(cursor->cursor, (MDB_val *)k, (MDB_val *)d, op));
 }
 
-KVS_HELPER_CURSOR_RANGE_FUNCS(kvs__)
+KVS_HELPER_CURSOR_RANGE_FUNCS(kvs__cursor)
 
 KVS_FN int kvs__cursor_put(KVS_cursor *const cursor, KVS_val *const key, KVS_val *const data, unsigned const flags) {
 	if(!cursor) return KVS_EINVAL;

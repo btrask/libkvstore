@@ -424,7 +424,7 @@ KVS_FN int kvs__cursor_next(KVS_cursor *const cursor, KVS_val *const key, KVS_va
 	return kvs_cursor_next(CURSOR_INNER(cursor), key, data, dir);
 }
 
-KVS_HELPER_CURSOR_RANGE_FUNCS(kvs__)
+KVS_HELPER_CURSOR_RANGE_FUNCS(kvs__cursor)
 
 KVS_FN int kvs__cursor_put(KVS_cursor *const cursor, KVS_val *const key, KVS_val *const data, unsigned const flags) {
 	if(!cursor) return KVS_EINVAL;
