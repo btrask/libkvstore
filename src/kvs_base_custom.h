@@ -69,7 +69,7 @@ struct KVS_base {
 	void (*env_destroy)(KVS_env *const env);
 
 	size_t (*txn_size)(KVS_env *const env);
-	int (*txn_init)(KVS_txn *const txn);
+	int (*txn_init)(KVS_env *const env, KVS_txn *const txn);
 	int (*txn_get_config)(KVS_txn *const txn, char const *const type, void *data);
 	int (*txn_set_config)(KVS_txn *const txn, char const *const type, void *data);
 	int (*txn_begin0)(KVS_txn *const txn);

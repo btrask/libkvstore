@@ -37,8 +37,7 @@ int kvs_helper_txn_set_config(KVS_txn *const txn, KVS_helper_txn *const helper, 
 	if(!helper) return KVS_EINVAL;
 	if(!type) return KVS_EINVAL;
 	if(0 == strcmp(type, KVS_TXN_ENV)) {
-		helper->env = data;
-		return 0;
+		return KVS_EINVAL;
 	} else if(0 == strcmp(type, KVS_TXN_PARENT)) {
 		helper->parent = data;
 		return 0;

@@ -101,12 +101,15 @@ KVS_FN void kvs__env_destroy(KVS_env *const env) {
 }
 
 KVS_FN size_t kvs__txn_size(KVS_env *const env) {
+	if(!env) return 0;
 	return sizeof(struct KVS_txn);
 }
-KVS_FN int kvs__txn_init(KVS_txn *const txn) {
+KVS_FN int kvs__txn_init(KVS_env *const env, KVS_txn *const txn) {
+	if(!env) return KVS_EINVAL;
 	if(!txn) return KVS_EINVAL;
 	assert_zeroed(txn, 1);
 	txn->isa = kvs_base_lsmdb;
+	txn->helper->env = env;
 	return 0;
 }
 KVS_FN int kvs__txn_get_config(KVS_txn *const txn, char const *const type, void *data) {

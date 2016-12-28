@@ -151,7 +151,7 @@ endif
 
 ifeq ($(USE_RAFT),1)
   CFLAGS += -DKVS_BASE_RAFT
-  LIBS += lcraft
+  LIBS += -lcraft -Wl,-rpath -Wl,/usr/local/lib
   OBJECTS += $(BUILD_DIR)/src/kvs_base_raft.o
 endif
 

@@ -132,18 +132,21 @@ size_t kvs_txn_size(KVS_env *const env) {
 	assert(env);
 	return kvs_txn_size_base(env->isa, env);
 }
-int kvs_txn_init(KVS_base const *const base, KVS_txn *const txn) {
+int kvs_txn_init(KVS_base const *const base, KVS_env *const env, KVS_txn *const txn) {
 	if(!base) return KVS_EINVAL;
 	if(!txn) return KVS_EINVAL;
-	int rc = base->txn_init(txn);
+	int rc = base->txn_init(env, txn);
 	if(rc < 0) return rc;
 	assert(txn->isa);
 	return 0;
 }
-int kvs_txn_create(KVS_base const *const base, KVS_txn **const out) {
-	KVS_txn *txn = calloc(1, kvs_txn_size_base(base, NULL));
+int kvs_txn_create(KVS_base const *const base, KVS_env *const env, KVS_txn **const out) {
+	if(!base) return KVS_EINVAL;
+	if(!out) return KVS_EINVAL;
+	if(!kvs_txn_size_base(base, env)) return KVS_EINVAL;
+	KVS_txn *txn = calloc(1, kvs_txn_size_base(base, env));
 	if(!txn) return KVS_ENOMEM;
-	int rc = kvs_txn_init(base, txn);
+	int rc = kvs_txn_init(base, env, txn);
 	if(rc < 0) goto cleanup;
 	*out = txn; txn = NULL;
 cleanup:
@@ -164,9 +167,7 @@ int kvs_txn_begin0(KVS_txn *const txn) {
 }
 int kvs_txn_begin_init(KVS_env *const env, KVS_txn *const parent, unsigned flags, KVS_txn *const txn) {
 	if(!env || !env->isa) return KVS_EINVAL;
-	int rc = kvs_txn_init(env->isa, txn);
-	if(rc < 0) goto cleanup;
-	rc = kvs_txn_set_config(txn, KVS_TXN_ENV, env);
+	int rc = kvs_txn_init(env->isa, env, txn);
 	if(rc < 0) goto cleanup;
 	rc = kvs_txn_set_config(txn, KVS_TXN_PARENT, parent);
 	if(rc < 0) goto cleanup;

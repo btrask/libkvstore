@@ -152,8 +152,8 @@ void kvs_env_close(KVS_env *env); // Convenience
 
 size_t kvs_txn_size_base(KVS_base const *const base, KVS_env *const env);
 size_t kvs_txn_size(KVS_env *const env); // Convenience
-int kvs_txn_init(KVS_base const *const base, KVS_txn *const txn);
-int kvs_txn_create(KVS_base const *const base, KVS_txn **const out); // Convenience
+int kvs_txn_init(KVS_base const *const base, KVS_env *const env, KVS_txn *const txn);
+int kvs_txn_create(KVS_base const *const base, KVS_env *const env, KVS_txn **const out);
 int kvs_txn_get_config(KVS_txn *const txn, char const *const type, void *data);
 int kvs_txn_set_config(KVS_txn *const txn, char const *const type, void *data);
 int kvs_txn_begin0(KVS_txn *const txn);
