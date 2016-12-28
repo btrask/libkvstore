@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "lsmdb/lsmdb.h"
-#include "kvs_base_custom.h"
+#include "kvs_helper.h"
 #include "common.h"
 
 struct KVS_env {
@@ -18,11 +18,8 @@ struct KVS_env {
 };
 struct KVS_txn {
 	KVS_base const *isa;
-	KVS_env *env;
-	KVS_txn *parent;
-	KVS_txn *child;
+	KVS_helper_txn helper[1];
 	LSMDB_txn *txn;
-	KVS_cursor *cursor;
 };
 struct KVS_cursor {
 	KVS_base const *isa;
@@ -106,35 +103,40 @@ KVS_FN void kvs__env_destroy(KVS_env *const env) {
 KVS_FN size_t kvs__txn_size(KVS_env *const env) {
 	return sizeof(struct KVS_txn);
 }
-KVS_FN int kvs__txn_begin_init(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn *const txn) {
-	if(!env) return KVS_EINVAL;
+KVS_FN int kvs__txn_init(KVS_txn *const txn) {
 	if(!txn) return KVS_EINVAL;
-	if(parent && parent->child) return KVS_BAD_TXN;
 	assert_zeroed(txn, 1);
-	int rc = 0;
 	txn->isa = kvs_base_lsmdb;
-
-	rc = mdberr(lsmdb_txn_begin(env->env, parent ? parent->txn : NULL, flags, &txn->txn));
+	return 0;
+}
+KVS_FN int kvs__txn_get_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	return kvs_helper_txn_get_config(txn, txn->helper, type, data);
+}
+KVS_FN int kvs__txn_set_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	return kvs_helper_txn_set_config(txn, txn->helper, type, data);
+}
+KVS_FN int kvs__txn_begin0(KVS_txn *const txn) {
+	if(!txn) return KVS_EINVAL;
+	if(!txn->helper->env) return KVS_EINVAL;
+	if(txn->helper->parent && txn->helper->parent->helper->child) return KVS_BAD_TXN;
+	int rc = mdberr(lsmdb_txn_begin(txn->helper->->env,
+		txn->helper->parent ? txn->helper->parent->txn : NULL,
+		txn->helper->flags, &txn->txn));
 	if(rc < 0) goto cleanup;
-	txn->env = env;
-	txn->parent = parent;
-	txn->child = NULL;
 
-	if(parent) parent->child = txn;
+	if(txn->helper->parent) txn->helper->parent->helper->child = txn;
 cleanup:
 	if(rc < 0) kvs_txn_abort_destroy(txn);
 	return 0;
 }
 KVS_FN int kvs__txn_commit_destroy(KVS_txn *const txn) {
 	if(!txn) return KVS_EINVAL;
-	int rc = 0;
-	if(txn->child) {
-		rc = kvs_txn_commit(txn->child); txn->child = NULL;
-		if(rc < 0) goto cleanup;
-	}
+	int rc = kvs_helper_txn_commit(txn);
+	if(rc < 0) goto cleanup;
 	rc = mdberr(lsmdb_autocompact(txn->txn));
 	if(rc < 0) goto cleanup;
-	kvs_cursor_close(txn->cursor); txn->cursor = NULL;
 	rc = mdberr(lsmdb_txn_commit(txn->txn)); txn->txn = NULL;
 	if(rc < 0) goto cleanup;
 cleanup:
@@ -143,47 +145,14 @@ cleanup:
 }
 KVS_FN void kvs__txn_abort_destroy(KVS_txn *const txn) {
 	if(!txn) return;
-	if(txn->child) {
-		kvs_txn_abort(txn->child); txn->child = NULL;
-	}
-	kvs_cursor_close(txn->cursor); txn->cursor = NULL;
+	kvs_helper_txn_abort(txn->helper);
 	lsmdb_txn_abort(txn->txn); txn->txn = NULL;
-	if(txn->parent) txn->parent->child = NULL;
 	txn->isa = NULL;
-	txn->env = NULL;
-	txn->parent = NULL;
-	txn->txn = NULL;
 	assert_zeroed(txn, 1);
-}
-KVS_FN int kvs__txn_env(KVS_txn *const txn, KVS_env **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->env;
-	return 0;
-}
-KVS_FN int kvs__txn_parent(KVS_txn *const txn, KVS_txn **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->parent;
-	return 0;
-}
-KVS_FN int kvs__txn_get_flags(KVS_txn *const txn, unsigned *const flags) {
-	if(!txn) return KVS_EINVAL;
-	return mdberr(lsmdb_txn_get_flags(txn->txn, flags));
 }
 KVS_FN int kvs__txn_cmp(KVS_txn *const txn, KVS_val const *const a, KVS_val const *const b) {
 	if(!txn) return KVS_EINVAL;
 	return lsmdb_cmp(txn->txn, (MDB_val *)a, (MDB_val *)b);
-}
-KVS_FN int kvs__txn_cursor(KVS_txn *const txn, KVS_cursor **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	if(!txn->cursor) {
-		int rc = kvs_cursor_open(txn, &txn->cursor);
-		if(rc < 0) return rc;
-	}
-	*out = txn->cursor;
-	return 0;
 }
 
 KVS_FN int kvs__get(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data) {

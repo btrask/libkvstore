@@ -63,8 +63,8 @@ int kvs_env_init_custom(KVS_base const *const base, KVS_env *const env) {
 	// Set standard settings to ensure as much uniformity as possible.
 	unsigned flags = 0; // Synchronous, read-write
 	int mode = 0600;
-	kvs_env_set_config(env, KVS_CFG_FLAGS, &flags);
-	kvs_env_set_config(env, KVS_CFG_FILEMODE, &mode);
+	kvs_env_set_config(env, KVS_ENV_FLAGS, &flags);
+	kvs_env_set_config(env, KVS_ENV_FILEMODE, &mode);
 	return 0;
 }
 int kvs_env_create_custom(KVS_base const *const base, KVS_env **const out) {
@@ -104,9 +104,9 @@ int kvs_env_open0(KVS_env *const env) {
 }
 int kvs_env_open(KVS_env *const env, char const *const name, unsigned flags, int mode) {
 	if(!env || !env->isa) return KVS_EINVAL;
-	kvs_env_set_config(env, KVS_CFG_FILENAME, (char *)name);
-	kvs_env_set_config(env, KVS_CFG_FLAGS, &flags);
-	kvs_env_set_config(env, KVS_CFG_FILEMODE, &mode);
+	kvs_env_set_config(env, KVS_ENV_FILENAME, (char *)name);
+	kvs_env_set_config(env, KVS_ENV_FLAGS, &flags);
+	kvs_env_set_config(env, KVS_ENV_FILEMODE, &mode);
 	return kvs_env_open0(env);
 }
 KVS_base const *kvs_env_base(KVS_env *const env) {
@@ -124,16 +124,59 @@ void kvs_env_close(KVS_env *env) {
 	free(env); env = NULL;
 }
 
+size_t kvs_txn_size_base(KVS_base const *const base, KVS_env *const env) {
+	assert(base);
+	return base->txn_size(env);
+}
 size_t kvs_txn_size(KVS_env *const env) {
 	assert(env);
-	return env->isa->txn_size(env);
+	return kvs_txn_size_base(env->isa, env);
 }
-int kvs_txn_begin_init(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn *const txn) {
-	if(!env || !env->isa) return KVS_EINVAL;
-	int rc = env->isa->txn_begin_init(env, parent, flags, txn);
+int kvs_txn_init(KVS_base const *const base, KVS_txn *const txn) {
+	if(!base) return KVS_EINVAL;
+	if(!txn) return KVS_EINVAL;
+	int rc = base->txn_init(txn);
 	if(rc < 0) return rc;
 	assert(txn->isa);
 	return 0;
+}
+int kvs_txn_create(KVS_base const *const base, KVS_txn **const out) {
+	KVS_txn *txn = calloc(1, kvs_txn_size_base(base, NULL));
+	if(!txn) return KVS_ENOMEM;
+	int rc = kvs_txn_init(base, txn);
+	if(rc < 0) goto cleanup;
+	*out = txn; txn = NULL;
+cleanup:
+	free(txn); txn = NULL;
+	return rc;
+}
+int kvs_txn_get_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn || !txn->isa) return KVS_EINVAL;
+	return txn->isa->txn_get_config(txn, type, data);
+}
+int kvs_txn_set_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn || !txn->isa) return KVS_EINVAL;
+	return txn->isa->txn_set_config(txn, type, data);
+}
+int kvs_txn_begin0(KVS_txn *const txn) {
+	if(!txn || !txn->isa) return KVS_EINVAL;
+	return txn->isa->txn_begin0(txn);
+}
+int kvs_txn_begin_init(KVS_env *const env, KVS_txn *const parent, unsigned flags, KVS_txn *const txn) {
+	if(!env || !env->isa) return KVS_EINVAL;
+	int rc = kvs_txn_init(env->isa, txn);
+	if(rc < 0) goto cleanup;
+	rc = kvs_txn_set_config(txn, KVS_TXN_ENV, env);
+	if(rc < 0) goto cleanup;
+	rc = kvs_txn_set_config(txn, KVS_TXN_PARENT, parent);
+	if(rc < 0) goto cleanup;
+	rc = kvs_txn_set_config(txn, KVS_TXN_FLAGS, &flags);
+	if(rc < 0) goto cleanup;
+	rc = kvs_txn_begin0(txn);
+	if(rc < 0) goto cleanup;
+cleanup:
+	if(rc < 0) kvs_txn_abort_destroy(txn);
+	return rc;
 }
 int kvs_txn_begin(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn **const out) {
 	KVS_txn *txn = calloc(1, kvs_txn_size(env));
@@ -168,24 +211,20 @@ void kvs_txn_abort(KVS_txn *txn) {
 	free(txn); txn = NULL;
 }
 int kvs_txn_env(KVS_txn *const txn, KVS_env **const out) {
-	if(!txn || !txn->isa) return KVS_EINVAL;
-	return txn->isa->txn_env(txn, out);
+	return kvs_txn_get_config(txn, KVS_TXN_ENV, out);
 }
 int kvs_txn_parent(KVS_txn *const txn, KVS_txn **const out) {
-	if(!txn || !txn->isa) return KVS_EINVAL;
-	return txn->isa->txn_parent(txn, out);
+	return kvs_txn_get_config(txn, KVS_TXN_PARENT, out);
 }
 int kvs_txn_get_flags(KVS_txn *const txn, unsigned *const flags) {
-	if(!txn || !txn->isa) return KVS_EINVAL;
-	return txn->isa->txn_get_flags(txn, flags);
+	return kvs_txn_get_config(txn, KVS_TXN_FLAGS, flags);
 }
 int kvs_txn_cmp(KVS_txn *const txn, KVS_val const *const a, KVS_val const *const b) {
 	assert(txn); // Can't return errors.
 	return txn->isa->txn_cmp(txn, a, b);
 }
 int kvs_txn_cursor(KVS_txn *const txn, KVS_cursor **const out) {
-	if(!txn || !txn->isa) return KVS_EINVAL;
-	return txn->isa->txn_cursor(txn, out);
+	return kvs_txn_get_config(txn, KVS_TXN_CURSOR, out);
 }
 
 int kvs_get(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data) {

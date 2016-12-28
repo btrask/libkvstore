@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "liblmdb/lmdb.h"
-#include "kvs_base_custom.h"
+#include "kvs_helper.h"
 #include "common.h"
 
 // MDB private definition but seems unlikely to change.
@@ -22,12 +22,8 @@ struct KVS_env {
 };
 struct KVS_txn {
 	KVS_base const *isa;
-	KVS_env *env;
-	KVS_txn *parent;
-	KVS_txn *child;
+	KVS_helper_txn helper[1];
 	MDB_txn *txn;
-	unsigned flags;
-	KVS_cursor *cursor;
 };
 struct KVS_cursor {
 	KVS_base const *isa;
@@ -56,22 +52,22 @@ cleanup:
 KVS_FN int kvs__env_get_config(KVS_env *const env, char const *const type, void *data) {
 	if(!env) return KVS_EINVAL;
 	if(!type) return KVS_EINVAL;
-	if(0 == strcmp(type, KVS_CFG_MAPSIZE)) {
+	if(0 == strcmp(type, KVS_ENV_MAPSIZE)) {
 		MDB_envinfo x[1];
 		int rc = mdberr(mdb_env_info(env->env, x));
 		if(rc < 0) return rc;
 		*(size_t *)data = x->me_mapsize;
 		return 0;
-	} else if(0 == strcmp(type, KVS_CFG_COMMAND)) {
+	} else if(0 == strcmp(type, KVS_ENV_COMMAND)) {
 		*(KVS_cmd_data *)data = *env->cmd; return 0;
-	} else if(0 == strcmp(type, KVS_CFG_KEYSIZE)) {
+	} else if(0 == strcmp(type, KVS_ENV_KEYSIZE)) {
 		*(size_t *)data = mdb_env_get_maxkeysize(env->env);
 		return 0;
-	} else if(0 == strcmp(type, KVS_CFG_FLAGS)) {
+	} else if(0 == strcmp(type, KVS_ENV_FLAGS)) {
 		return mdberr(mdb_env_get_flags(env->env, data));
-	} else if(0 == strcmp(type, KVS_CFG_FILENAME)) {
+	} else if(0 == strcmp(type, KVS_ENV_FILENAME)) {
 		*(char const **)data = env->path; return 0;
-	} else if(0 == strcmp(type, KVS_CFG_FILEMODE)) {
+	} else if(0 == strcmp(type, KVS_ENV_FILEMODE)) {
 		*(int *)data = env->mode; return 0;
 	} else {
 		return KVS_ENOTSUP;
@@ -80,14 +76,14 @@ KVS_FN int kvs__env_get_config(KVS_env *const env, char const *const type, void 
 KVS_FN int kvs__env_set_config(KVS_env *const env, char const *const type, void *data) {
 	if(!env) return KVS_EINVAL;
 	if(!type) return KVS_EINVAL;
-	if(0 == strcmp(type, KVS_CFG_MAPSIZE)) {
+	if(0 == strcmp(type, KVS_ENV_MAPSIZE)) {
 		size_t *const sp = data;
 		return mdberr(mdb_env_set_mapsize(env->env, *sp));
-	} else if(0 == strcmp(type, KVS_CFG_COMPARE)) {
+	} else if(0 == strcmp(type, KVS_ENV_COMPARE)) {
 		return KVS_ENOTSUP; //*env->cmp = *(KVS_cmp_data *)data; return 0;
-	} else if(0 == strcmp(type, KVS_CFG_COMMAND)) {
+	} else if(0 == strcmp(type, KVS_ENV_COMMAND)) {
 		*env->cmd = *(KVS_cmd_data *)data; return 0;
-	} else if(0 == strcmp(type, KVS_CFG_FLAGS)) {
+	} else if(0 == strcmp(type, KVS_ENV_FLAGS)) {
 		unsigned const valid = MDB_NOSYNC;
 		unsigned flags = *(unsigned *)data;
 		int rc;
@@ -96,12 +92,12 @@ KVS_FN int kvs__env_set_config(KVS_env *const env, char const *const type, void 
 		rc = mdberr(mdb_env_set_flags(env->env, valid & ~flags, 0));
 		if(rc < 0) return rc;
 		return 0;
-	} else if(0 == strcmp(type, KVS_CFG_FILENAME)) {
+	} else if(0 == strcmp(type, KVS_ENV_FILENAME)) {
 		free(env->path);
 		env->path = data ? strdup(data) : NULL;
 		if(data && !env->path) return KVS_ENOMEM;
 		return 0;
-	} else if(0 == strcmp(type, KVS_CFG_FILEMODE)) {
+	} else if(0 == strcmp(type, KVS_ENV_FILEMODE)) {
 		env->mode = *(int *)data; return 0;
 	} else {
 		return KVS_ENOTSUP;
@@ -146,35 +142,37 @@ KVS_FN void kvs__env_destroy(KVS_env *const env) {
 KVS_FN size_t kvs__txn_size(KVS_env *const env) {
 	return sizeof(struct KVS_txn);
 }
-KVS_FN int kvs__txn_begin_init(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn *const txn) {
-	if(!env) return KVS_EINVAL;
+KVS_FN int kvs__txn_init(KVS_txn *const txn) {
 	if(!txn) return KVS_EINVAL;
-	if(parent && parent->child) return KVS_BAD_TXN;
 	assert_zeroed(txn, 1);
-	int rc = 0;
 	txn->isa = kvs_base_mdb;
-
-	rc = mdberr(mdb_txn_begin(env->env, parent ? parent->txn : NULL, flags, &txn->txn));
+	return 0;
+}
+KVS_FN int kvs__txn_get_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	return kvs_helper_txn_get_config(txn, txn->helper, type, data);
+}
+KVS_FN int kvs__txn_set_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	return kvs_helper_txn_set_config(txn, txn->helper, type, data);
+}
+KVS_FN int kvs__txn_begin0(KVS_txn *const txn) {
+	if(!txn) return KVS_EINVAL;
+	if(!txn->helper->env) return KVS_EINVAL;
+	if(txn->helper->parent && txn->helper->parent->helper->child) return KVS_BAD_TXN;
+	int rc = mdberr(mdb_txn_begin(txn->helper->env->env,
+		txn->helper->parent ? txn->helper->parent->txn : NULL,
+		txn->helper->flags, &txn->txn));
 	if(rc < 0) goto cleanup;
-	txn->env = env;
-	txn->parent = parent;
-	txn->child = NULL;
-	txn->flags = flags;
-	txn->cursor = NULL;
-
-	if(parent) parent->child = txn;
+	if(txn->helper->parent) txn->helper->parent->helper->child = txn;
 cleanup:
 	if(rc < 0) kvs_txn_abort_destroy(txn);
 	return rc;
 }
 KVS_FN int kvs__txn_commit_destroy(KVS_txn *const txn) {
 	if(!txn) return KVS_EINVAL;
-	int rc = 0;
-	if(txn->child) {
-		rc = kvs_txn_commit(txn->child); txn->child = NULL;
-		if(rc < 0) goto cleanup;
-	}
-	kvs_cursor_close(txn->cursor); txn->cursor = NULL;
+	int rc = kvs_helper_txn_commit(txn->helper);
+	if(rc < 0) goto cleanup;
 	rc = mdberr(mdb_txn_commit(txn->txn)); txn->txn = NULL;
 	if(rc < 0) goto cleanup;
 cleanup:
@@ -183,48 +181,13 @@ cleanup:
 }
 KVS_FN void kvs__txn_abort_destroy(KVS_txn *const txn) {
 	if(!txn) return;
-	if(txn->child) {
-		kvs_txn_abort(txn->child); txn->child = NULL;
-	}
-	kvs_cursor_close(txn->cursor); txn->cursor = NULL;
+	kvs_helper_txn_abort(txn->helper);
 	mdb_txn_abort(txn->txn); txn->txn = NULL;
-	if(txn->parent) txn->parent->child = NULL;
 	txn->isa = NULL;
-	txn->env = NULL;
-	txn->parent = NULL;
-	txn->flags = 0;
 	assert_zeroed(txn, 1);
-}
-KVS_FN int kvs__txn_env(KVS_txn *const txn, KVS_env **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->env;
-	return 0;
-}
-KVS_FN int kvs__txn_parent(KVS_txn *const txn, KVS_txn **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->parent;
-	return 0;
-}
-KVS_FN int kvs__txn_get_flags(KVS_txn *const txn, unsigned *const flags) {
-	if(!txn) return KVS_EINVAL;
-	if(!flags) return KVS_EINVAL;
-	*flags = txn->flags;
-	return 0;
 }
 KVS_FN int kvs__txn_cmp(KVS_txn *const txn, KVS_val const *const a, KVS_val const *const b) {
 	return mdb_cmp(txn->txn, MDB_MAIN_DBI, (MDB_val *)a, (MDB_val *)b);
-}
-KVS_FN int kvs__txn_cursor(KVS_txn *const txn, KVS_cursor **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	if(!txn->cursor) {
-		int rc = kvs_cursor_open(txn, &txn->cursor);
-		if(rc < 0) return rc;
-	}
-	*out = txn->cursor;
-	return 0;
 }
 
 // Use our own cursor for these rather than mdb_get/put

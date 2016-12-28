@@ -15,7 +15,7 @@
 #endif
 
 #include "liblmdb/lmdb.h"
-#include "kvs_base_custom.h"
+#include "kvs_helper.h"
 #include "kvs_wrbuf.h"
 #include "common.h"
 
@@ -34,14 +34,10 @@ struct KVS_env {
 };
 struct KVS_txn {
 	KVS_base const *isa;
-	KVS_env *env;
-	KVS_txn *parent;
-	KVS_txn *child;
-	unsigned flags;
+	KVS_helper_txn helper[1];
 	leveldb_readoptions_t *ropts;
 	leveldb_snapshot_t const *snapshot; // For KVS_RDONLY
 	KVS_txn *tmptxn; // For KVS_RDWR
-	KVS_cursor *cursor;
 };
 struct KVS_cursor {
 	KVS_base const *isa;
@@ -333,15 +329,15 @@ KVS_FN int kvs__env_init(KVS_env *const env) {
 KVS_FN int kvs__env_get_config(KVS_env *const env, char const *const type, void *data) {
 	if(!env) return KVS_EINVAL;
 	if(!type) return KVS_EINVAL;
-	if(0 == strcmp(type, KVS_CFG_COMMAND)) {
+	if(0 == strcmp(type, KVS_ENV_COMMAND)) {
 		*(KVS_cmd_data *)data = *env->cmd; return 0;
-	} else if(0 == strcmp(type, KVS_CFG_KEYSIZE)) {
+	} else if(0 == strcmp(type, KVS_ENV_KEYSIZE)) {
 		return kvs_env_get_config(env->tmpenv, type, data);
-	} else if(0 == strcmp(type, KVS_CFG_TXNSIZE)) {
-		return kvs_env_get_config(env->tmpenv, KVS_CFG_MAPSIZE, data);
-	} else if(0 == strcmp(type, KVS_CFG_FLAGS)) {
+	} else if(0 == strcmp(type, KVS_ENV_TXNSIZE)) {
+		return kvs_env_get_config(env->tmpenv, KVS_ENV_MAPSIZE, data);
+	} else if(0 == strcmp(type, KVS_ENV_FLAGS)) {
 		*(unsigned *)data = env->flags; return 0;
-	} else if(0 == strcmp(type, KVS_CFG_FILENAME)) {
+	} else if(0 == strcmp(type, KVS_ENV_FILENAME)) {
 		*(char const **)data = env->path; return 0;
 	} else {
 		return KVS_ENOTSUP;
@@ -350,19 +346,19 @@ KVS_FN int kvs__env_get_config(KVS_env *const env, char const *const type, void 
 KVS_FN int kvs__env_set_config(KVS_env *const env, char const *const type, void *data) {
 	if(!env) return KVS_EINVAL;
 	if(!type) return KVS_EINVAL;
-	if(0 == strcmp(type, KVS_CFG_MAPSIZE)) {
+	if(0 == strcmp(type, KVS_ENV_MAPSIZE)) {
 		return 0;
-	} else if(0 == strcmp(type, KVS_CFG_COMPARE)) {
+	} else if(0 == strcmp(type, KVS_ENV_COMPARE)) {
 		return KVS_ENOTSUP; //*env->cmp = *(KVS_cmp_data *)data; return 0;
-	} else if(0 == strcmp(type, KVS_CFG_COMMAND)) {
+	} else if(0 == strcmp(type, KVS_ENV_COMMAND)) {
 		*env->cmd = *(KVS_cmd_data *)data; return 0;
-	} else if(0 == strcmp(type, KVS_CFG_TXNSIZE)) {
-		return kvs_env_set_config(env->tmpenv, KVS_CFG_MAPSIZE, data);
-	} else if(0 == strcmp(type, KVS_CFG_FLAGS)) {
+	} else if(0 == strcmp(type, KVS_ENV_TXNSIZE)) {
+		return kvs_env_set_config(env->tmpenv, KVS_ENV_MAPSIZE, data);
+	} else if(0 == strcmp(type, KVS_ENV_FLAGS)) {
 		env->flags = KVS_NOSYNC & *(unsigned *)data;
 		leveldb_writeoptions_set_sync(env->wopts, !(KVS_NOSYNC & env->flags));
 		return 0;
-	} else if(0 == strcmp(type, KVS_CFG_FILENAME)) {
+	} else if(0 == strcmp(type, KVS_ENV_FILENAME)) {
 		free(env->path);
 		env->path = data ? strdup(data) : NULL;
 		if(data && !env->path) return KVS_ENOMEM;
@@ -381,7 +377,7 @@ KVS_FN int kvs__env_open0(KVS_env *const env) {
 
 	int rc = 0;
 	if(env->cmp->fn) { // TODO: Currently unsupported
-		rc = kvs_env_set_config(env->tmpenv, KVS_CFG_COMPARE, &env->cmp);
+		rc = kvs_env_set_config(env->tmpenv, KVS_ENV_COMPARE, &env->cmp);
 		if(rc < 0) return rc;
 	}
 
@@ -428,34 +424,44 @@ KVS_FN void kvs__env_destroy(KVS_env *const env) {
 KVS_FN size_t kvs__txn_size(KVS_env *const env) {
 	return sizeof(struct KVS_txn);
 }
-KVS_FN int kvs__txn_begin_init(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn *const txn) {
-	if(!env) return KVS_EINVAL;
+KVS_FN int kvs__txn_init(KVS_txn *const txn) {
 	if(!txn) return KVS_EINVAL;
-	if(parent && parent->child) return KVS_BAD_TXN;
 	assert_zeroed(txn, 1);
-	int rc = 0;
 	txn->isa = kvs_base_leveldb;
-	txn->env = env;
-	txn->parent = parent;
-	txn->child = NULL;
-	txn->flags = flags;
+	return 0;
+}
+KVS_FN int kvs__txn_get_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	return kvs_helper_txn_get_config(txn, txn->helper, type, data);
+}
+KVS_FN int kvs__txn_set_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	return kvs_helper_txn_set_config(txn, txn->helper, type, data);
+}
+KVS_FN int kvs__txn_begin0(KVS_txn *const txn) {
+	if(!txn) return KVS_EINVAL;
+	if(!txn->helper->env) return KVS_EINVAL;
+	if(txn->helper->parent && txn->helper->parent->helper->child) return KVS_BAD_TXN;
+	int rc = 0;
 	txn->ropts = leveldb_readoptions_create();
 	if(!txn->ropts) rc = KVS_ENOMEM;
 	if(rc < 0) goto cleanup;
 
-	if(KVS_RDONLY & flags) {
+	if(KVS_RDONLY & txn->helper->flags) {
 		txn->tmptxn = NULL;
-		txn->snapshot = leveldb_create_snapshot(txn->env->db);
+		txn->snapshot = leveldb_create_snapshot(txn->helper->env->db);
 		if(!txn->snapshot) rc = KVS_ENOMEM;
 		if(rc < 0) goto cleanup;
 		leveldb_readoptions_set_snapshot(txn->ropts, txn->snapshot);
 	} else {
-		rc = kvs_txn_begin(env->tmpenv, parent ? parent->tmptxn : NULL, flags, &txn->tmptxn);
+		rc = kvs_txn_begin(txn->helper->env->tmpenv,
+			txn->helper->parent ? txn->helper->parent->tmptxn : NULL,
+			txn->helper->flags, &txn->tmptxn);
 		if(rc < 0) goto cleanup;
 		txn->snapshot = NULL;
 	}
 
-	if(parent) parent->child = txn;
+	if(txn->helper->parent) txn->helper->parent->helper->child = txn;
 cleanup:
 	if(rc < 0) kvs_txn_abort_destroy(txn);
 	return rc;
@@ -466,15 +472,13 @@ KVS_FN int kvs__txn_commit_destroy(KVS_txn *const txn) {
 	KVS_cursor *cursor = NULL;
 	KVS_val key[1], data[1];
 	int rc = 0;
-	if(KVS_RDONLY & txn->flags) goto cleanup;
+	if(KVS_RDONLY & txn->helper->flags) goto cleanup;
 	assert(txn->tmptxn);
-	if(txn->child) {
-		rc = kvs_txn_commit(txn->child); txn->child = NULL;
-		if(rc < 0) goto cleanup;
-	}
 
-	if(txn->parent) {
-		kvs_cursor_close(txn->cursor); txn->cursor = NULL;
+	rc = kvs_helper_txn_commit(txn->helper);
+	if(rc < 0) goto cleanup;
+
+	if(txn->helper->parent) {
 		rc = kvs_txn_commit(txn->tmptxn); txn->tmptxn = NULL;
 		goto cleanup;
 	}
@@ -504,7 +508,7 @@ KVS_FN int kvs__txn_commit_destroy(KVS_txn *const txn) {
 	if(rc < 0) goto cleanup;
 
 	char *err = NULL;
-	leveldb_write(txn->env->db, txn->env->wopts, batch, &err);
+	leveldb_write(txn->helper->env->db, txn->helper->env->wopts, batch, &err);
 	leveldb_free(err);
 	if(err) rc = KVS_EIO; // TODO
 	if(rc < 0) goto cleanup;
@@ -517,54 +521,19 @@ cleanup:
 }
 KVS_FN void kvs__txn_abort_destroy(KVS_txn *const txn) {
 	if(!txn) return;
-	if(txn->child) {
-		kvs_txn_abort(txn->child); txn->child = NULL;
-	}
 	if(txn->snapshot) {
 		leveldb_readoptions_set_snapshot(txn->ropts, NULL);
-		leveldb_release_snapshot(txn->env->db, txn->snapshot); txn->snapshot = NULL;
+		leveldb_release_snapshot(txn->helper->env->db, txn->snapshot); txn->snapshot = NULL;
 	}
 	leveldb_readoptions_destroy(txn->ropts); txn->ropts = NULL;
-	kvs_cursor_close(txn->cursor); txn->cursor = NULL;
+	kvs_helper_txn_abort(txn->helper);
 	kvs_txn_abort(txn->tmptxn); txn->tmptxn = NULL;
-	if(txn->parent) txn->parent->child = NULL;
-	txn->env = NULL;
-	txn->parent = NULL;
-	txn->flags = 0;
 	txn->isa = NULL;
 	assert_zeroed(txn, 1);
 }
-KVS_FN int kvs__txn_env(KVS_txn *const txn, KVS_env **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->env;
-	return 0;
-}
-KVS_FN int kvs__txn_parent(KVS_txn *const txn, KVS_txn **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->parent;
-	return 0;
-}
-KVS_FN int kvs__txn_get_flags(KVS_txn *const txn, unsigned *const flags) {
-	if(!txn) return KVS_EINVAL;
-	if(!flags) return KVS_EINVAL;
-	*flags = txn->flags;
-	return 0;
-}
 KVS_FN int kvs__txn_cmp(KVS_txn *const txn, KVS_val const *const a, KVS_val const *const b) {
 	assert(txn); // We can't report an error from this function.
-	return cmp_internal(txn->env, a, b);
-}
-KVS_FN int kvs__txn_cursor(KVS_txn *const txn, KVS_cursor **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	if(!txn->cursor) {
-		int rc = kvs_cursor_open(txn, &txn->cursor);
-		if(rc < 0) return rc;
-	}
-	*out = txn->cursor;
-	return 0;
+	return cmp_internal(txn->helper->env, a, b);
 }
 
 KVS_FN int kvs__get(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data) {
@@ -605,9 +574,9 @@ KVS_FN int kvs__cursor_init(KVS_txn *const txn, KVS_cursor *const cursor) {
 	assert_zeroed(cursor, 1);
 	LDB_txn ldbtxn = {
 		.isa = kvs_base_leveldb_internal,
-		.db = txn->env->db,
+		.db = txn->helper->env->db,
 		.ropts = txn->ropts,
-		.cmp = { *txn->env->cmp },
+		.cmp = { *txn->helper->env->cmp },
 	};
 	KVS_wrbuf_txn wrbuftxn = {
 		.isa = kvs_base_wrbuf,

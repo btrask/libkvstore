@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
-#include "kvs_base_custom.h"
+#include "kvs_helper.h"
 #include "common.h"
 
 struct KVS_env {
@@ -15,10 +15,7 @@ struct KVS_env {
 };
 struct KVS_txn {
 	KVS_base const *isa;
-	KVS_env *env;
-	KVS_txn *parent;
-	KVS_txn *child;
-	KVS_cursor *cursor;
+	KVS_helper_txn helper[1];
 	// Inner txn
 };
 struct KVS_cursor {
@@ -34,7 +31,7 @@ struct KVS_cursor {
 
 static bool key_ok(KVS_cursor *const cursor, KVS_val const *const key) {
 	assert(cursor);
-	KVS_env *const env = cursor->txn->env;
+	KVS_env *const env = cursor->txn->helper->env;
 	if(!key) return true;
 	return env->keyspace->min->size + key->size < env->key_max;
 }
@@ -43,7 +40,7 @@ static bool range_ok(KVS_cursor *const cursor, KVS_range const *const range) {
 }
 static KVS_val *pfx_internal(KVS_cursor *const cursor, KVS_val const *const key, KVS_val *const storage) {
 	assert(cursor);
-	KVS_env *const env = cursor->txn->env;
+	KVS_env *const env = cursor->txn->helper->env;
 	if(!key) return NULL;
 	KVS_val *const out = storage;
 	KVS_val const *const a = env->keyspace->min;
@@ -68,7 +65,7 @@ static KVS_range *pfx_range(KVS_cursor *const cursor, KVS_range const *const ran
 }
 static void key_strip(KVS_cursor *const cursor, KVS_val const *const src, KVS_val *const dst) {
 	if(!dst) return;
-	KVS_env *const env = cursor->txn->env;
+	KVS_env *const env = cursor->txn->helper->env;
 	KVS_val const *const pfx = env->keyspace->min;
 	dst->data = src->data + pfx->size;
 	dst->size = src->size - pfx->size;
@@ -129,15 +126,15 @@ KVS_FN int kvs__env_init(KVS_env *const env) {
 KVS_FN int kvs__env_get_config(KVS_env *const env, char const *const type, void *data) {
 	if(!env) return KVS_EINVAL;
 	if(!type) return KVS_EINVAL;
-	if(0 == strcmp(type, KVS_CFG_INNERDB)) {
+	if(0 == strcmp(type, KVS_ENV_INNERDB)) {
 		*(KVS_env **)data = env->sub; return 0;
-	} else if(0 == strcmp(type, KVS_CFG_KEYSIZE)) {
-		int rc = kvs_env_get_config(env->sub, KVS_CFG_KEYSIZE, data);
+	} else if(0 == strcmp(type, KVS_ENV_KEYSIZE)) {
+		int rc = kvs_env_get_config(env->sub, KVS_ENV_KEYSIZE, data);
 		if(rc < 0) return rc;
 		if(*(size_t *)data <= env->keyspace->min->size) return KVS_PANIC;
 		*(size_t *)data -= env->keyspace->min->size;
 		return 0;
-	} else if(0 == strcmp(type, KVS_CFG_PREFIX)) {
+	} else if(0 == strcmp(type, KVS_ENV_PREFIX)) {
 		*(KVS_val *)data = *env->keyspace->min; return 0;
 	} else {
 		return kvs_env_get_config(env->sub, type, data);
@@ -146,14 +143,14 @@ KVS_FN int kvs__env_get_config(KVS_env *const env, char const *const type, void 
 KVS_FN int kvs__env_set_config(KVS_env *const env, char const *const type, void *data) {
 	if(!env) return KVS_EINVAL;
 	if(!type) return KVS_EINVAL;
-	if(0 == strcmp(type, KVS_CFG_INNERDB)) {
+	if(0 == strcmp(type, KVS_ENV_INNERDB)) {
 		kvs_env_close(env->sub);
 		env->sub = data;
 		return 0;
-	} else if(0 == strcmp(type, KVS_CFG_KEYSIZE)) {
+	} else if(0 == strcmp(type, KVS_ENV_KEYSIZE)) {
 		size_t max = *(size_t *)data + env->keyspace->min->size;
-		return kvs_env_set_config(env, KVS_CFG_KEYSIZE, &max);
-	} else if(0 == strcmp(type, KVS_CFG_PREFIX)) {
+		return kvs_env_set_config(env, KVS_ENV_KEYSIZE, &max);
+	} else if(0 == strcmp(type, KVS_ENV_PREFIX)) {
 		return keyspace(env->keyspace, data);
 	} else {
 		return kvs_env_set_config(env->sub, type, data);
@@ -167,7 +164,7 @@ KVS_FN int kvs__env_open0(KVS_env *const env) {
 	if(rc < 0) goto cleanup;
 
 	env->key_max = 512;
-	(void) kvs_env_get_config(env->sub, KVS_CFG_KEYSIZE, &env->key_max);
+	(void) kvs_env_get_config(env->sub, KVS_ENV_KEYSIZE, &env->key_max);
 	if(env->key_max <= env->keyspace->min->size) {
 		rc = KVS_PANIC;
 		goto cleanup;
@@ -187,19 +184,35 @@ KVS_FN void kvs__env_destroy(KVS_env *env) {
 }
 
 KVS_FN size_t kvs__txn_size(KVS_env *const env) {
-	return sizeof(struct KVS_env)+kvs_txn_size(env->sub);
+	return sizeof(struct KVS_env) + (env ? kvs_txn_size(env->sub) : 0);
 }
-KVS_FN int kvs__txn_begin_init(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn *const txn) {
-	if(!env) return KVS_EINVAL;
+KVS_FN int kvs__txn_init(KVS_txn *const txn) {
 	if(!txn) return KVS_EINVAL;
-	if(parent && parent->child) return KVS_BAD_TXN;
 	assert_zeroed(txn, 1);
 	txn->isa = kvs_base_prefix;
-	txn->env = env;
-	txn->parent = parent;
-	int rc = kvs_txn_begin_init(env->sub, parent ? TXN_INNER(parent) : NULL, flags, TXN_INNER(txn));
+	return 0;
+}
+KVS_FN int kvs__txn_get_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	int rc = kvs_helper_txn_get_config(txn, txn->helper, type, data);
+	if(KVS_ENOTSUP != rc) return rc;
+	// TODO: Prefix
+	return KVS_ENOTSUP;
+}
+KVS_FN int kvs__txn_set_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	int rc = kvs_helper_txn_set_config(txn, txn->helper, type, data);
+	if(KVS_ENOTSUP != rc) return rc;
+	// TODO: Prefix
+	return KVS_ENOTSUP;
+}
+KVS_FN int kvs__txn_begin0(KVS_txn *const txn) {
+	if(!txn) return KVS_EINVAL;
+	if(!txn->helper->env) return KVS_EINVAL; // TODO
+	if(txn->helper->parent && txn->helper->parent->helper->child) return KVS_BAD_TXN;
+	int rc = kvs_txn_begin_init(txn->helper->env->sub, txn->helper->parent ? TXN_INNER(txn->helper->parent) : NULL, txn->helper->flags, TXN_INNER(txn));
 	if(rc < 0) goto cleanup;
-	if(parent) parent->child = txn;
+	if(txn->helper->parent) txn->helper->parent->helper->child = txn;
 cleanup:
 	if(rc < 0) kvs_txn_abort_destroy(txn);
 	return rc;
@@ -207,8 +220,8 @@ cleanup:
 KVS_FN int kvs__txn_commit_destroy(KVS_txn *txn) {
 	if(!txn) return KVS_EINVAL;
 	int rc = 0;
-	if(txn->child) {
-		rc = kvs_txn_commit(txn->child); txn->child = NULL;
+	if(txn->helper->child) {
+		rc = kvs_txn_commit(txn->helper->child); txn->helper->child = NULL;
 		if(rc < 0) goto cleanup;
 	}
 	rc = kvs_txn_commit_destroy(TXN_INNER(txn));
@@ -219,46 +232,20 @@ cleanup:
 }
 KVS_FN void kvs__txn_abort_destroy(KVS_txn *txn) {
 	if(!txn) return;
-	if(txn->child) {
-		kvs_txn_abort(txn->child); txn->child = NULL;
+	if(txn->helper->child) {
+		kvs_txn_abort(txn->helper->child); txn->helper->child = NULL;
 	}
-	kvs_cursor_close(txn->cursor); txn->cursor = NULL;
+	kvs_cursor_close(txn->helper->cursor); txn->helper->cursor = NULL;
 	kvs_txn_abort_destroy(TXN_INNER(txn));
-	if(txn->parent) txn->parent->child = NULL;
-	txn->env = NULL;
-	txn->parent = NULL;
+	if(txn->helper->parent) txn->helper->parent->helper->child = NULL;
+	txn->helper->env = NULL;
+	txn->helper->parent = NULL;
 	txn->isa = NULL;
 	assert_zeroed(txn, 1);
-}
-KVS_FN int kvs__txn_env(KVS_txn *const txn, KVS_env **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->env;
-	return 0;
-}
-KVS_FN int kvs__txn_parent(KVS_txn *const txn, KVS_txn **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->parent;
-	return 0;
-}
-KVS_FN int kvs__txn_get_flags(KVS_txn *const txn, unsigned *const flags) {
-	if(!txn) return KVS_EINVAL;
-	return kvs_txn_get_flags(TXN_INNER(txn), flags);
 }
 KVS_FN int kvs__txn_cmp(KVS_txn *const txn, KVS_val const *const a, KVS_val const *const b) {
 	assert(txn);
 	return kvs_txn_cmp(TXN_INNER(txn), a, b);
-}
-KVS_FN int kvs__txn_cursor(KVS_txn *const txn, KVS_cursor **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	if(!txn->cursor) {
-		int rc = kvs_cursor_open(txn, &txn->cursor);
-		if(rc < 0) return rc;
-	}
-	*out = txn->cursor;
-	return 0;
 }
 
 KVS_FN int kvs__get(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data) {
@@ -296,7 +283,7 @@ KVS_FN int kvs__cursor_init(KVS_txn *const txn, KVS_cursor *const cursor) {
 	if(rc < 0) goto cleanup;
 
 	for(size_t i = 0; i < numberof(cursor->bufs); i++) {
-		cursor->bufs[i] = malloc(cursor->txn->env->key_max);
+		cursor->bufs[i] = malloc(cursor->txn->helper->env->key_max);
 		if(!cursor->bufs[i]) {
 			rc = KVS_ENOMEM;
 			goto cleanup;
@@ -344,21 +331,21 @@ KVS_FN int kvs__cursor_seek(KVS_cursor *const cursor, KVS_val *const key, KVS_va
 	if(!cursor) return KVS_EINVAL;
 	if(!key_ok(cursor, key)) return KVS_BAD_VALSIZE;
 	int rc = kvs_cursor_seekr(CURSOR_INNER(cursor),
-		cursor->txn->env->keyspace, pfx_key(cursor, key), data, dir);
+		cursor->txn->helper->env->keyspace, pfx_key(cursor, key), data, dir);
 	if(rc >= 0 && 0 != dir) key_strip(cursor, cursor->key, key);
 	return rc;
 }
 KVS_FN int kvs__cursor_first(KVS_cursor *const cursor, KVS_val *const key, KVS_val *const data, int const dir) {
 	if(!cursor) return KVS_EINVAL;
 	int rc = kvs_cursor_firstr(CURSOR_INNER(cursor),
-		cursor->txn->env->keyspace, key, data, dir);
+		cursor->txn->helper->env->keyspace, key, data, dir);
 	if(rc >= 0) key_strip(cursor, key, key);
 	return rc;
 }
 KVS_FN int kvs__cursor_next(KVS_cursor *const cursor, KVS_val *const key, KVS_val *const data, int const dir) {
 	if(!cursor) return KVS_EINVAL;
 	int rc = kvs_cursor_nextr(CURSOR_INNER(cursor),
-		cursor->txn->env->keyspace, key, data, dir);
+		cursor->txn->helper->env->keyspace, key, data, dir);
 	if(rc >= 0) key_strip(cursor, key, key);
 	return rc;
 }

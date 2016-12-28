@@ -105,23 +105,32 @@ typedef struct {
 // Please choose names carefully so that equivalent options are
 // likely to be reusable. If an option is highly back-end specific,
 // give it a more specific name.
-#define KVS_CFG_MAPSIZE "mapsize" // size_t *data
-#define KVS_CFG_COMPARE "compare" // KVS_cmp_data *data
-#define KVS_CFG_COMMAND "command" // KVS_cmd_data *data
-#define KVS_CFG_TXNSIZE "txnsize" // size_t *data
-#define KVS_CFG_LOG "log" // KVS_print_data *data
-#define KVS_CFG_INNERDB "innerdb" // KVS_env *set (takes ownership) / KVS_env **get
-#define KVS_CFG_COMMITHOOK "commithook" // KVS_commit_data *data
-#define KVS_CFG_COMMITAPPLY "commitapply" // KVS_apply_data *data
-#define KVS_CFG_TXNID "txnid" // KVS_val *data
-#define KVS_CFG_CONFLICTFREE "conflictfree" // int *data (as boolean)
-#define KVS_CFG_KEYSIZE "keysize" // size_t *data (might be read-only)
-#define KVS_CFG_FLAGS "flags" // unsigned *data (KVS_NOSYNC, KVS_RDONLY)
-#define KVS_CFG_FILENAME "filename" // char const *set / char const **get
-#define KVS_CFG_FILEMODE "filemode" // int *data (e.g. 0644)
-#define KVS_CFG_LOCKFILE "lockfile" // char const *set / char const **get
-#define KVS_CFG_TEMPDB "tempdb" // KVS_env *set (takes ownership) / KVS_env **get
-#define KVS_CFG_PREFIX "prefix" // KVS_val *data
+#define KVS_ENV_MAPSIZE "mapsize" // size_t *data
+#define KVS_ENV_COMPARE "compare" // KVS_cmp_data *data
+#define KVS_ENV_COMMAND "command" // KVS_cmd_data *data
+#define KVS_ENV_TXNSIZE "txnsize" // size_t *data
+#define KVS_ENV_LOG "log" // KVS_print_data *data
+#define KVS_ENV_INNERDB "innerdb" // KVS_env *set (takes ownership) / KVS_env **get
+#define KVS_ENV_COMMITHOOK "commithook" // KVS_commit_data *data
+#define KVS_ENV_COMMITAPPLY "commitapply" // KVS_apply_data *data
+#define KVS_ENV_TXNID "txnid" // KVS_val *data
+#define KVS_ENV_CONFLICTFREE "conflictfree" // int *data (as boolean)
+#define KVS_ENV_KEYSIZE "keysize" // size_t *data (might be read-only)
+#define KVS_ENV_FLAGS "flags" // unsigned *data (KVS_NOSYNC, KVS_RDONLY)
+#define KVS_ENV_FILENAME "filename" // char const *set / char const **get
+#define KVS_ENV_FILEMODE "filemode" // int *data (e.g. 0644)
+#define KVS_ENV_LOCKFILE "lockfile" // char const *set / char const **get
+#define KVS_ENV_TEMPDB "tempdb" // KVS_env *set (takes ownership) / KVS_env **get
+#define KVS_ENV_PREFIX "prefix" // KVS_val *data
+
+#define KVS_TXN_ENV "env" // KVS_env *set (non-owning) / KVS_env **get
+#define KVS_TXN_PARENT "parent" // KVS_txn *set (non-owning) / KVS_txn **get
+#define KVS_TXN_CHILD "child" // KVS_txn *set (owning) / KVS_txn **get
+#define KVS_TXN_FLAGS "flags" // unsigned *data
+#define KVS_TXN_INNERTXN "innertxn" // KVS_txn *set (owning) / KVS_txn **get
+#define KVS_TXN_LOCALTXN "localtxn" // KVS_txn *set (owning) / KVS_txn **get
+#define KVS_TXN_PREFIX "prefix" // KVS_val *data
+#define KVS_TXN_CURSOR "cursor"
 
 KVS_base const *kvs_base_find(char const *const name);
 
@@ -141,16 +150,22 @@ KVS_base const *kvs_env_base(KVS_env *const env);
 void kvs_env_destroy(KVS_env *const env);
 void kvs_env_close(KVS_env *env); // Convenience
 
-size_t kvs_txn_size(KVS_env *const env);
+size_t kvs_txn_size_base(KVS_base const *const base, KVS_env *const env);
+size_t kvs_txn_size(KVS_env *const env); // Convenience
+int kvs_txn_init(KVS_base const *const base, KVS_txn *const txn);
+int kvs_txn_create(KVS_base const *const base, KVS_txn **const out); // Convenience
+int kvs_txn_get_config(KVS_txn *const txn, char const *const type, void *data);
+int kvs_txn_set_config(KVS_txn *const txn, char const *const type, void *data);
+int kvs_txn_begin0(KVS_txn *const txn);
 int kvs_txn_begin_init(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn *const txn);
 int kvs_txn_begin(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn **const out); // Convenience
 int kvs_txn_commit_destroy(KVS_txn *const txn);
 void kvs_txn_abort_destroy(KVS_txn *const txn);
 int kvs_txn_commit(KVS_txn *txn); // Convenience
 void kvs_txn_abort(KVS_txn *txn); // Convenience
-int kvs_txn_env(KVS_txn *const txn, KVS_env **const out);
-int kvs_txn_parent(KVS_txn *const txn, KVS_txn **const out);
-int kvs_txn_get_flags(KVS_txn *const txn, unsigned *const flags);
+int kvs_txn_env(KVS_txn *const txn, KVS_env **const out); // Convenience
+int kvs_txn_parent(KVS_txn *const txn, KVS_txn **const out); // Convenience
+int kvs_txn_get_flags(KVS_txn *const txn, unsigned *const flags); // Convenience
 int kvs_txn_cmp(KVS_txn *const txn, KVS_val const *const a, KVS_val const *const b);
 
 // A shared cursor for cases where you just need one for one or two ops.
@@ -158,7 +173,7 @@ int kvs_txn_cmp(KVS_txn *const txn, KVS_val const *const a, KVS_val const *const
 // other function that might also use it, including functions that call
 // kvs_get/put. It belongs to the transaction, so don't close it when
 // you're done.
-int kvs_txn_cursor(KVS_txn *const txn, KVS_cursor **const out);
+int kvs_txn_cursor(KVS_txn *const txn, KVS_cursor **const out); // Convenience
 
 int kvs_get(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data);
 int kvs_put(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data, unsigned const flags);

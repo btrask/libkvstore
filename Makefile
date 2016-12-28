@@ -158,6 +158,7 @@ endif
 HEADERS := \
 	$(INCLUDE_DIR)/kvstore/kvs_base.h \
 	$(INCLUDE_DIR)/kvstore/kvs_base_custom.h \
+	$(INCLUDE_DIR)/kvstore/kvs_helper.h \
 	$(INCLUDE_DIR)/kvstore/kvs_schema.h
 
 .PHONY: all

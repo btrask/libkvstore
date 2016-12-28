@@ -3,7 +3,78 @@
 
 #include <assert.h>
 #include <stdio.h>
-#include "kvs_base_custom.h"
+#include <string.h>
+#include "kvs_helper.h"
+#include "common.h"
+
+int kvs_helper_txn_get_config(KVS_txn *const txn, KVS_helper_txn *const helper, char const *const type, void *data) {
+	if(!helper) return KVS_EINVAL;
+	if(!type) return KVS_EINVAL;
+	if(0 == strcmp(type, KVS_TXN_ENV)) {
+		*(KVS_env **)data = helper->env;
+		return 0;
+	} else if(0 == strcmp(type, KVS_TXN_PARENT)) {
+		*(KVS_txn **)data = helper->parent;
+		return 0;
+	} else if(0 == strcmp(type, KVS_TXN_CHILD)) {
+		*(KVS_txn **)data = helper->child;
+		return 0;
+	} else if(0 == strcmp(type, KVS_TXN_FLAGS)) {
+		*(unsigned *)data = helper->flags;
+		return 0;
+	} else if(0 == strcmp(type, KVS_TXN_CURSOR)) {
+		if(!helper->cursor) {
+			int rc = kvs_cursor_open(txn, &helper->cursor);
+			if(rc < 0) return rc;
+		}
+		*(KVS_cursor **)data = helper->cursor;
+		return 0;
+	} else {
+		return KVS_ENOTSUP;
+	}
+}
+int kvs_helper_txn_set_config(KVS_txn *const txn, KVS_helper_txn *const helper, char const *const type, void *data) {
+	if(!helper) return KVS_EINVAL;
+	if(!type) return KVS_EINVAL;
+	if(0 == strcmp(type, KVS_TXN_ENV)) {
+		helper->env = data;
+		return 0;
+	} else if(0 == strcmp(type, KVS_TXN_PARENT)) {
+		helper->parent = data;
+		return 0;
+	} else if(0 == strcmp(type, KVS_TXN_CHILD)) {
+		helper->child = data;
+		return 0;
+	} else if(0 == strcmp(type, KVS_TXN_FLAGS)) {
+		helper->flags = *(unsigned *)data;
+		return 0;
+	} else {
+		return KVS_ENOTSUP;
+	}
+}
+int kvs_helper_txn_commit(KVS_helper_txn *const helper) {
+	if(!helper) return KVS_EINVAL;
+	if(helper->child) {
+		int rc = kvs_txn_commit(helper->child); helper->child = NULL;
+		if(rc < 0) return rc;
+	}
+	kvs_cursor_close(helper->cursor); helper->cursor = NULL;
+	return 0;
+}
+void kvs_helper_txn_abort(KVS_helper_txn *const helper) {
+	if(!helper) return;
+	if(helper->child) {
+		kvs_txn_abort(helper->child); helper->child = NULL;
+	}
+	kvs_cursor_close(helper->cursor); helper->cursor = NULL;
+	if(helper->parent) {
+		kvs_txn_set_config(helper->parent, KVS_TXN_CHILD, NULL);
+	}
+	helper->env = NULL;
+	helper->parent = NULL;
+	helper->flags = 0;
+	assert_zeroed(helper, 1);
+}
 
 int kvs_helper_get(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data) {
 	KVS_cursor *cursor;
@@ -31,7 +102,7 @@ int kvs_helper_cmd(KVS_txn *const txn, unsigned char const *const buf, size_t co
 	KVS_cmd_data *cmd = NULL;
 	int rc = kvs_txn_env(txn, &env);
 	if(rc < 0) return rc;
-	rc = kvs_env_get_config(env, KVS_CFG_COMMAND, &cmd);
+	rc = kvs_env_get_config(env, KVS_ENV_COMMAND, &cmd);
 	if(rc < 0) return rc;
 	if(!cmd || !cmd->fn) return KVS_EINVAL;
 	return cmd->fn(cmd->ctx, txn, buf, len);

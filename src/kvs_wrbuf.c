@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "kvs_wrbuf.h"
+#include "kvs_helper.h"
 #include "common.h"
 
 typedef enum {

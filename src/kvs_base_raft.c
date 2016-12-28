@@ -8,7 +8,7 @@
 
 #include <raft.h>
 
-#include "kvs_base_custom.h"
+#include "kvs_helper.h"
 #include "common.h"
 
 enum {
@@ -28,10 +28,7 @@ struct KVS_env {
 };
 struct KVS_txn {
 	KVS_base const *isa;
-	KVS_env *env;
-	KVS_txn *parent;
-	KVS_txn *child;
-	KVS_cursor *cursor;
+	KVS_helper_txn helper[1];
 	// Inner txn
 };
 struct KVS_cursor {
@@ -49,18 +46,17 @@ static int err(int x) {
 }
 static int initialize(KVS_env *const env) {
 	assert(env);
-	KVS_env *const env = user_data;
-	KSV_env *raw = NULL;
+	KVS_env *raw = NULL;
 	KVS_txn *txn = NULL;
-	int rc = ksv_env_get_config(env, KSV_CFG_INNERDB, &raw);
+	int rc = kvs_env_get_config(env, KVS_ENV_INNERDB, &raw);
 	if(rc < 0) goto cleanup;
-	rc = kvs_txn_begin(raw, NULL, DB_RDONLY, &txn);
+	rc = kvs_txn_begin(raw, NULL, KVS_RDONLY, &txn);
 	if(rc < 0) goto cleanup;
 
 
 	for(;;) {
 		raft_entry_t entry = {
-		
+			0 // TODO
 		};
 		raft_append_entry(env->raft, &entry);
 	}
@@ -183,18 +179,18 @@ static int applylog(raft_server_t *raft, void *user_data, raft_entry_t *entry, i
 		.txn_id = {{ 0, NULL }},
 		.log = log,
 	};
-	int rc = kvs_env_set_config(env, KVS_CFG_COMMITAPPLY, &data);
+	int rc = kvs_env_set_config(env, KVS_ENV_COMMITAPPLY, &data);
 	if(rc < 0) return RAFT_ERR_SHUTDOWN;
 	return 0;
 }
 
 static int persist_vote(raft_server_t *raft, void *user_data, int node) {
 	KVS_env *const env = user_data;
-	KSV_env *raw = NULL;
+	KVS_env *raw = NULL;
 	KVS_txn *txn = NULL;
-	int rc = ksv_env_get_config(env, KSV_CFG_INNERDB, &raw);
+	int rc = kvs_env_get_config(env, KVS_ENV_INNERDB, &raw);
 	if(rc < 0) goto cleanup;
-	rc = kvs_txn_begin(raw, NULL, DB_RDWR, &txn);
+	rc = kvs_txn_begin(raw, NULL, KVS_RDWR, &txn);
 	if(rc < 0) goto cleanup;
 
 	unsigned char k[2] = { PFX_META, META_VOTED };
@@ -298,33 +294,38 @@ KVS_FN size_t kvs__txn_size(KVS_env *const env) {
 	assert(env);
 	return sizeof(struct KVS_txn)+kvs_txn_size(ENV_INNER(env));
 }
-KVS_FN int kvs__txn_begin_init(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn *const txn) {
-	if(!env) return KVS_EINVAL;
+KVS_FN int kvs__txn_init(KVS_txn *const txn) {
 	if(!txn) return KVS_EINVAL;
-	if(parent && parent->child) return KVS_BAD_TXN;
 	assert_zeroed(txn, 1);
-	int rc = 0;
 	txn->isa = kvs_base_raft;
-	txn->env = env;
-	txn->parent = parent;
-	txn->child = NULL;
-
-	rc = kvs_txn_begin_init(ENV_INNER(env), parent ? TXN_INNER(parent) : NULL, flags, TXN_INNER(txn));
+	return 0;
+}
+KVS_FN int kvs__txn_get_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	return kvs_helper_txn_get_config(txn, txn->helper, type, data);
+}
+KVS_FN int kvs__txn_set_config(KVS_txn *const txn, char const *const type, void *data) {
+	if(!txn) return KVS_EINVAL;
+	return kvs_helper_txn_set_config(txn, txn->helper, type, data);
+}
+KVS_FN int kvs__txn_begin0(KVS_txn *const txn) {
+	if(!txn) return KVS_EINVAL;
+	if(!txn->helper->env) return KVS_EINVAL;
+	if(txn->helper->parent && txn->helper->parent->helper->child) return KVS_BAD_TXN;
+	int rc = kvs_txn_begin_init(ENV_INNER(txn->helper->env),
+		txn->helper->parent ? TXN_INNER(txn->helper->parent) : NULL,
+		txn->helper->flags, TXN_INNER(txn));
 	if(rc < 0) goto cleanup;
 
-	if(parent) parent->child = txn;
+	if(txn->helper->parent) txn->helper->parent->helper->child = txn;
 cleanup:
 	if(rc < 0) kvs_txn_abort_destroy(txn);
 	return rc;
 }
 KVS_FN int kvs__txn_commit_destroy(KVS_txn *const txn) {
 	if(!txn) return KVS_EINVAL;
-	int rc = 0;
-	if(txn->child) {
-		rc = kvs_txn_commit(txn->child); txn->child = NULL;
-		if(rc < 0) goto cleanup;
-	}
-	kvs_cursor_close(txn->cursor); txn->cursor = NULL;
+	int rc = kvs_helper_txn_commit(txn->helper);
+	if(rc < 0) goto cleanup;
 	rc = kvs_txn_commit_destroy(TXN_INNER(txn));
 	if(rc < 0) goto cleanup;
 cleanup:
@@ -333,46 +334,14 @@ cleanup:
 }
 KVS_FN void kvs__txn_abort_destroy(KVS_txn *const txn) {
 	if(!txn) return;
-	if(txn->child) {
-		kvs_txn_abort(txn->child); txn->child = NULL;
-	}
-	kvs_cursor_close(txn->cursor); txn->cursor = NULL;
+	kvs_helper_txn_abort(txn->helper);
 	kvs_txn_abort_destroy(TXN_INNER(txn));
-	if(txn->parent) txn->parent->child = NULL;
-	txn->env = NULL;
-	txn->parent = NULL;
 	txn->isa = NULL;
 	assert_zeroed(txn, 1);
-}
-KVS_FN int kvs__txn_env(KVS_txn *const txn, KVS_env **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->env;
-	return 0;
-}
-KVS_FN int kvs__txn_parent(KVS_txn *const txn, KVS_txn **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	*out = txn->parent;
-	return 0;
-}
-KVS_FN int kvs__txn_get_flags(KVS_txn *const txn, unsigned *const flags) {
-	if(!txn) return KVS_EINVAL;
-	return kvs_txn_get_flags(TXN_INNER(txn), flags);
 }
 KVS_FN int kvs__txn_cmp(KVS_txn *const txn, KVS_val const *const a, KVS_val const *const b) {
 	assert(txn);
 	return kvs_txn_cmp(TXN_INNER(txn), a, b);
-}
-KVS_FN int kvs__txn_cursor(KVS_txn *const txn, KVS_cursor **const out) {
-	if(!txn) return KVS_EINVAL;
-	if(!out) return KVS_EINVAL;
-	if(!txn->cursor) {
-		int rc = kvs_cursor_open(txn, &txn->cursor);
-		if(rc < 0) return rc;
-	}
-	*out = txn->cursor;
-	return 0;
 }
 
 KVS_FN int kvs__get(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data) {

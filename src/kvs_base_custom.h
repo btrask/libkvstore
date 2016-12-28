@@ -1,8 +1,8 @@
 // Copyright 2016 Ben Trask
 // MIT licensed (see LICENSE for details)
 
-#ifndef KVSTORE_KVS_BASE_INTERNAL_H
-#define KVSTORE_KVS_BASE_INTERNAL_H
+#ifndef KVSTORE_KVS_BASE_CUSTOM_H
+#define KVSTORE_KVS_BASE_CUSTOM_H
 
 #include "kvs_base.h"
 
@@ -20,14 +20,13 @@ KVS_base const kvs_base_##_name[1] = {{ \
 	.env_destroy = kvs__env_destroy, \
 	\
 	.txn_size = kvs__txn_size, \
-	.txn_begin_init = kvs__txn_begin_init, \
+	.txn_init = kvs__txn_init, \
+	.txn_get_config = kvs__txn_get_config, \
+	.txn_set_config = kvs__txn_set_config, \
+	.txn_begin0 = kvs__txn_begin0, \
 	.txn_commit_destroy = kvs__txn_commit_destroy, \
 	.txn_abort_destroy = kvs__txn_abort_destroy, \
-	.txn_env = kvs__txn_env, \
-	.txn_parent = kvs__txn_parent, \
-	.txn_get_flags = kvs__txn_get_flags, \
 	.txn_cmp = kvs__txn_cmp, \
-	.txn_cursor = kvs__txn_cursor, \
 	\
 	.get = kvs__get, \
 	.put = kvs__put, \
@@ -70,14 +69,13 @@ struct KVS_base {
 	void (*env_destroy)(KVS_env *const env);
 
 	size_t (*txn_size)(KVS_env *const env);
-	int (*txn_begin_init)(KVS_env *const env, KVS_txn *const parent, unsigned const flags, KVS_txn *const txn);
+	int (*txn_init)(KVS_txn *const txn);
+	int (*txn_get_config)(KVS_txn *const txn, char const *const type, void *data);
+	int (*txn_set_config)(KVS_txn *const txn, char const *const type, void *data);
+	int (*txn_begin0)(KVS_txn *const txn);
 	int (*txn_commit_destroy)(KVS_txn *const txn);
 	void (*txn_abort_destroy)(KVS_txn *const txn);
-	int (*txn_env)(KVS_txn *const txn, KVS_env **const out);
-	int (*txn_parent)(KVS_txn *const txn, KVS_txn **const out);
-	int (*txn_get_flags)(KVS_txn *const txn, unsigned *const flags);
 	int (*txn_cmp)(KVS_txn *const txn, KVS_val const *const a, KVS_val const *const b);
-	int (*txn_cursor)(KVS_txn *const txn, KVS_cursor **const out);
 
 	int (*get)(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data);
 	int (*put)(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data, unsigned const flags);
@@ -125,19 +123,6 @@ extern KVS_base const kvs_base_prefix[1];
 KVS_env *kvs_prefix_env_raw(KVS_env *const env);
 KVS_txn *kvs_prefix_txn_raw(KVS_txn *const txn);
 KVS_cursor *kvs_prefix_cursor_raw(KVS_cursor *cursor);
-
-// Helper functions
-// Use these to get a simple implementation in terms of other operations.
-int kvs_helper_get(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data);
-int kvs_helper_put(KVS_txn *const txn, KVS_val const *const key, KVS_val *const data, unsigned const flags);
-int kvs_helper_del(KVS_txn *const txn, KVS_val const *const key, unsigned const flags); // For write-optimized back-ends, implement kvs_del and use the helper for kvs_cursor_del.
-int kvs_helper_cmd(KVS_txn *const txn, unsigned char const *const buf, size_t const len);
-int kvs_helper_countr(KVS_txn *const txn, KVS_range const *const range, uint64_t *const out); // Very slow.
-int kvs_helper_delr(KVS_txn *const txn, KVS_range const *const range, uint64_t *const out); // Very slow and can bloat transactions.
-int kvs_helper_cursor_seekr(KVS_cursor *const cursor, KVS_range const *const range, KVS_val *const key, KVS_val *const data, int const dir);
-int kvs_helper_cursor_firstr(KVS_cursor *const cursor, KVS_range const *const range, KVS_val *const key, KVS_val *const data, int const dir);
-int kvs_helper_cursor_nextr(KVS_cursor *const cursor, KVS_range const *const range, KVS_val *const key, KVS_val *const data, int const dir);
-int kvs_helper_cursor_del(KVS_cursor *const cursor, unsigned const flags);
 
 #endif
 
