@@ -55,26 +55,26 @@ Please refer to the [LMDB documentation](http://lmdb.tech/doc/group__mdb.html) f
 
 Notable differences from LMDB's API:
 
-- Use `db_env_create_base` to create a database environment with a particular named back-end, or `db_env_create` to use the default.
+- Use `kvs_env_create_base` to create a database environment with a particular named back-end, or `kvs_env_create` to use the default.
 - `mdb_cursor_get` is split into several functions:
-	- `db_cursor_current`: returns key and value at the cursor's current location.
-	- `db_cursor_seek`: seeks to key. Direction can be positive (`>=`), negative (`<=`), or 0 (`==`).
-	- `db_cursor_next`: steps forward (dir is positive) or backward (dir is negative).
-	- `db_cursor_first`: seeks to first (dir is positive) or last (dir is negative) element.
-	- `db_cursor_get` is still supported.
+	- `kvs_cursor_current`: returns key and value at the cursor's current location.
+	- `kvs_cursor_seek`: seeks to key. Direction can be positive (`>=`), negative (`<=`), or 0 (`==`).
+	- `kvs_cursor_next`: steps forward (dir is positive) or backward (dir is negative).
+	- `kvs_cursor_first`: seeks to first (dir is positive) or last (dir is negative) element.
+	- `kvs_cursor_get` is still supported.
 - Range functions have been added:
-	- `db_cursor_seekr` seeks within a range
-	- `db_cursor_firstr` finds the first or last key in a range
-	- `db_cursor_nextr` finds the next or previous key in a range
+	- `kvs_cursor_seekr` seeks within a range
+	- `kvs_cursor_firstr` finds the first or last key in a range
+	- `kvs_cursor_nextr` finds the next or previous key in a range
 - DBIs are not supported, There is only a single keyspace. (Use ranges for partitioning.)
 - `DUPSORT` mode is not supported. Each key can only have one value. (Suffix your keys and use ranges.)
 - Many of the more specialized options are unsupported.
-- `DB_NOOVERWRITE` is a large performance hit for write-optimized back-ends, so try to avoid it.
+- `KVS_NOOVERWRITE` is a large performance hit for write-optimized back-ends, so try to avoid it.
 - Transactions have a shared cursor which can be used to avoid frequently creating and destroying cursors. Note that "shared" means "not re-entrant."
 - A low level schema layer is included. It's optional and subject to change.
 - Concurrent access between several processes is supported by some back-ends (LMDB) and not others (LevelDB).
 - Puts with `NULL` data (rather than just empty data) are explicitly allowed.
-- `db_cmd` lets you implement your own high level commands for efficient logical replication.
+- `kvs_cmd` lets you implement your own high level commands for efficient logical replication.
 
 Known Issues
 ------------
