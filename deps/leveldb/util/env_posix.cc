@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+// Hacks for Android 10.
+#define BSD_SOURCE
+#define __ANDROID_API__ 28
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>

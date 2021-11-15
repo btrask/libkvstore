@@ -6,9 +6,9 @@ USE_LEVELDB ?= 1
 USE_ROCKSDB ?= 0
 USE_HYPER ?= 0
 USE_DEBUG ?= 1
-USE_DISTRIBUTED ?= 1
+USE_DISTRIBUTED ?= 0
 USE_DUMMY ?= 1
-USE_RAFT ?= 1
+USE_RAFT ?= 0
 
 DESTDIR ?=
 PREFIX ?= /usr/local
@@ -67,6 +67,9 @@ WARNINGS += -Wno-sign-compare
 
 # Checks that format strings are literals amongst other things.
 WARNINGS += -Wformat=2
+
+# Used for log functions.
+WARNINGS += -Wno-format-nonliteral
 
 
 SHARED_LIBS :=

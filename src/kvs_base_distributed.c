@@ -449,10 +449,11 @@ cleanup:
 }
 KVS_FN int kvs__txn_commit_destroy(KVS_txn *const txn) {
 	if(!txn) return KVS_EINVAL;
-	if(MODE_RDONLY == txn->mode) goto cleanup;
 	assert(MODE_COMMAND != txn->mode);
 	FILE *log = NULL;
-	int rc = kvs_helper_txn_commit(txn->helper);
+	int rc = 0;
+	if(MODE_RDONLY == txn->mode) goto cleanup;
+	rc = kvs_helper_txn_commit(txn->helper);
 	if(rc < 0) goto cleanup;
 	kvs_txn_abort(txn->shared); txn->shared = NULL;
 	kvs_txn_abort(txn->local); txn->local = NULL;
